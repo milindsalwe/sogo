@@ -1,7 +1,7 @@
 /* NSData+Crypto.m - this file is part of SOGo
  *
- * Copyright (C) 2012 Nicolas Höft
- * Copyright (C) 2012-2016 Inverse inc.
+ * Copyright (C) 2012, 2020 Nicolas Höft
+ * Copyright (C) 2012-2020 Inverse inc.
  * Copyright (C) 2012 Jeroen Dekkers
  *
  * Author: Nicolas Höft
@@ -27,6 +27,9 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#if !defined(__OpenBSD__) && !defined(__FreeBSD__)
+#include <crypt.h>
+#endif
 
 #if defined(HAVE_GNUTLS)
 #include <gnutls/gnutls.h>
@@ -46,7 +49,14 @@
 #error this module requires either gnutls or openssl
 #endif
 
+#ifdef HAVE_SODIUM
+#include <sodium.h>
+#endif
+
+#include "aes.h"
+#include "crypt_blowfish.h"
 #include "lmhash.h"
+#include "pkcs5_pbkdf2.h"
 
 #import <Foundation/NSArray.h>
 #import <NGExtensions/NGBase64Coding.h>
@@ -57,6 +67,15 @@ static unsigned charTo4Bits(char c);
 static BOOL check_gnutls_init(void);
 static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
 #endif
+
+#define BLF_CRYPT_DEFAULT_COMPLEXITY (5)
+#define BLF_CRYPT_SALT_LEN (16)
+#define BLF_CRYPT_BUFFER_LEN (128)
+#define BLF_CRYPT_PREFIX_LEN (7+22+1) /* $2.$nn$ + salt */
+#define BLF_CRYPT_PREFIX "$2y"
+
+static const char salt_chars[] =
+	"./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 
 @implementation NSData (SOGoCryptoExtension)
@@ -130,7 +149,7 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
  */
 + (NSData *) generateSaltForLength: (unsigned int) theLength
 {
-  return [NSData generateSaltForLength: theLength withBase64: NO];
+  return [NSData generateSaltForLength: theLength withPrintable: NO];
 }
 
 /**
@@ -138,15 +157,16 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
  * with doBase64 == YES then the data will be longer than theLength
  *
  * @param theLength Length of the binary data to be generated in bytes
- * @param doBase64 Convert the data into Base-64 before retuning it, be aware that this makes the binary data longer
+ * @param doPrintable Use only printable characters
  * @return Pseudo-random binary data with length theLength or nil, if an error occured
  */
 + (NSData *) generateSaltForLength: (unsigned int) theLength
-                        withBase64: (BOOL) doBase64
+                        withPrintable: (BOOL) doPrintable
 {
   char *buf;
   int fd;
   NSData *data;
+  unsigned int i;
 
   fd = open("/dev/urandom", O_RDONLY);
 
@@ -155,12 +175,14 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
       buf = (char *)malloc(theLength);
       read(fd, buf, theLength);
       close(fd);
-
-      data = [NSData dataWithBytesNoCopy: buf  length: theLength  freeWhenDone: YES];
-      if(doBase64 == YES)
+      if (doPrintable == YES)
         {
-          return [data dataByEncodingBase64WithLineLength: 1024];
+          for (i = 0; i < theLength; i++)
+            {
+              buf[i] = salt_chars[buf[i] % (sizeof(salt_chars)-1)];
+            }
         }
+      data = [NSData dataWithBytesNoCopy: buf  length: theLength  freeWhenDone: YES];
       return data;
     }
   return nil;
@@ -171,10 +193,11 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
  *
  * @param passwordScheme The scheme to use for hashing/encryption.
  * @param theSalt The salt to be used. If none is given but needed, it will be generated
- * @return Binary data from the encryption by the specified scheme. On error the funciton returns nil.
+ * @return Binary data from the encryption by the specified scheme. On error the function returns nil.
  */
 - (NSData *) asCryptedPassUsingScheme: (NSString *) passwordScheme
                              withSalt: (NSData *) theSalt
+                              keyPath: (NSString *) theKeyPath
 {
   if ([passwordScheme caseInsensitiveCompare: @"none"] == NSOrderedSame ||
       [passwordScheme caseInsensitiveCompare: @"plain"] == NSOrderedSame ||
@@ -240,18 +263,124 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
     {
       return [self asSHA512CryptUsingSalt: theSalt];
     }
+  else if ([passwordScheme caseInsensitiveCompare: @"blf-crypt"] == NSOrderedSame)
+    {
+      return [self asBlowfishCryptUsingSalt: theSalt];
+    }
+  else if ([passwordScheme caseInsensitiveCompare: @"pbkdf2"] == NSOrderedSame)
+    {
+      return [self asPBKDF2SHA1UsingSalt: theSalt];
+    }
+#ifdef HAVE_SODIUM
+  else if ([passwordScheme caseInsensitiveCompare: @"argon2i"] == NSOrderedSame)
+    {
+      return [self asArgon2iUsingSalt: theSalt];
+    }
+# ifdef crypto_pwhash_ALG_ARGON2ID13
+  else if ([passwordScheme caseInsensitiveCompare: @"argon2id"] == NSOrderedSame)
+    {
+      return [self asArgon2idUsingSalt: theSalt];
+    }
+# endif /* crypto_pwhash_ALG_ARGON2ID13 */
+#endif /* HAVE_SODIUM */
+  else if ([[passwordScheme lowercaseString] hasPrefix: @"sym"])
+    {
+      // We first support one sym cipher, AES-128-CBC. If something else is provided
+      // we return nil for now. Example of what theSalt might contain:
+      // $AES-128-CBC$cinlbHKnyBApySphVCz6yA==$Z9hjCXfMhz4xbXkW+aMkAw==
+      // If theSalt is empty, that means we are not validating a password
+      // but rather changing it. In this case, we generate an IV.
+      NSString *cipher, *iv;
+
+      cipher = nil;
+      iv = nil;
+
+      if ([theSalt length])
+        {
+          NSString *s;
+          NSArray *a;
+
+          s = [[NSString alloc] initWithData: theSalt  encoding: NSUTF8StringEncoding];
+          [s autorelease];
+          a = [s componentsSeparatedByString: @"$"];
+          cipher = [a objectAtIndex: 1];
+          iv = [a objectAtIndex: 2];
+        }
+      else
+        {
+          if ([passwordScheme caseInsensitiveCompare: @"sym-aes-128-cbc"] == NSOrderedSame)
+            cipher = @"AES-128-CBC";
+        }
+
+      if ([cipher caseInsensitiveCompare: @"AES-128-CBC"] == NSOrderedSame)
+        return [self asSymAES128CBCUsingIV: iv
+                                   keyPath: theKeyPath];
+    }
   // in case the scheme was not detected, return nil
   return nil;
+}
+
+/**
+ * Verify the given password data is equivalent with the
+ * clear text password using the passed encryption scheme
+ *
+ * @param passwordScheme The password scheme to use for comparison
+ * @param thePassword cleartext key
+ */
+- (BOOL) verifyUsingScheme: (NSString *) passwordScheme
+                withPassword: (NSData *) thePassword
+                     keyPath: (NSString *) theKeyPath
+{
+  NSData *passwordCrypted;
+  NSData *salt;
+
+  salt = [self extractSalt: passwordScheme];
+  if (salt == nil)
+      return NO;
+
+#ifdef HAVE_SODIUM
+  // use verification function provided by libsodium
+  if ([passwordScheme caseInsensitiveCompare: @"argon2i"] == NSOrderedSame
+#ifdef crypto_pwhash_ALG_ARGON2ID13
+   || [passwordScheme caseInsensitiveCompare: @"argon2id"] == NSOrderedSame
+#endif /* crypto_pwhash_ALG_ARGON2ID13 */
+   )
+     {
+        NSString *cryptString;
+        int result;
+
+        if (sodium_init() < 0)
+          return NO;
+        // For the sodium comparison we need to pass a null-terminated string
+        // as the first parameter
+        cryptString = [[NSString alloc] initWithData: self encoding: NSUTF8StringEncoding];
+        const char* pass = [thePassword bytes];
+        result = crypto_pwhash_str_verify([cryptString UTF8String], pass, [thePassword length]);
+        [cryptString release];
+        return result == 0;
+     }
+#endif /* HAVE_SODIUM */
+
+  // encrypt self with the salt an compare the results
+  passwordCrypted = [thePassword asCryptedPassUsingScheme: passwordScheme
+                                      withSalt: salt
+                                       keyPath: theKeyPath];
+
+  // return always false when there was a problem
+  if (passwordCrypted == nil)
+    return NO;
+
+  return [self isEqual: passwordCrypted];
 }
 
 - (NSData *) asLM
 {
   NSData *out;
-  
+
   unsigned char buf[14];
   unsigned char *o;
   unsigned int len;
-  
+
   memset(buf, 0, 14);
   len = ([self length] >= 14 ? 14 : [self length]);
   [self getBytes: buf  length: len];
@@ -279,7 +408,7 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
 #if defined(HAVE_GNUTLS)
   if (!check_gnutls_init())
     return nil;
-  
+
   md4_buffer([self bytes], [self length], md4);
 #elif defined(HAVE_OPENSSL)
   MD4([self bytes], [self length], md4);
@@ -336,7 +465,7 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
   int i;
   int len;
   NSData *key;
-  
+
   if ([self length] > 64)
     {
       key = [self asMD5];
@@ -352,7 +481,7 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
   // make sure the rest of the bytes is zero
   memset(inner + len, 0, 64 - len);
   memcpy(outer, inner, 64);
-  
+
   for (i = 0; i < 64; i++)
     {
       inner[i] ^= 0x36;
@@ -473,6 +602,48 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
   return [NSData dataWithBytes: sha  length: SHA512_DIGEST_LENGTH];
 }
 
+- (NSData *) asSymAES128CBCUsingIV: (NSString *) theIV
+                           keyPath: (NSString *) theKeyPath
+{
+  NSData *iv_d, *key_d, *cipherdata;
+  NSMutableString *result;
+  NSString *s;
+
+  char ciphertext[256], *iv_s, *key_s, *pass;
+  unsigned int len;
+
+  len = ceil((double)[self length]/16) * 16;
+
+  if (theIV)
+    iv_d = [theIV dataByDecodingBase64];
+  else
+    {
+      iv_d = [NSData generateSaltForLength: len];
+      theIV = [iv_d stringByEncodingBase64];
+    }
+
+  iv_s = calloc([iv_d length]+1, sizeof(char));
+  strncpy(iv_s, [iv_d bytes], [iv_d length]);
+
+  key_d = [NSData dataWithContentsOfFile: theKeyPath];
+  key_s = calloc([key_d length]+1, sizeof(char));
+  strncpy(key_s, [key_d bytes], [key_d length]);
+
+  pass = calloc(len, sizeof(char));
+  strncpy(pass, [self bytes], [self length]);
+  AES128_CBC_encrypt_buffer((uint8_t*)ciphertext, (uint8_t*)pass, (uint32_t)len, (const uint8_t*)key_s, (const uint8_t*)iv_s);
+
+  cipherdata = [NSData dataWithBytes: ciphertext  length: 16];
+  s = [[NSString alloc] initWithData: [cipherdata dataByEncodingBase64WithLineLength: 1024]
+                            encoding: NSASCIIStringEncoding];
+
+  result = [NSMutableString string];
+  [result appendFormat: @"$AES-128-CBC$%@$%@", theIV, s];
+  RELEASE(s);
+
+  return [result dataUsingEncoding: NSUTF8StringEncoding];
+}
+
 /**
  * Hash the data with SSHA. Uses openssl functions to generate it.
  *
@@ -483,11 +654,12 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
  */
 - (NSData *) asSSHAUsingSalt: (NSData *) theSalt
 {
-  // 
+  //
   NSMutableData *sshaData;
 
   // generate salt, if not available
-  if ([theSalt length] == 0) theSalt = [NSData generateSaltForLength: 8];
+  if ([theSalt length] == 0)
+    theSalt = [NSData generateSaltForLength: 8];
 
   // put the pass and salt together as one data array
   sshaData = [NSMutableData dataWithData: self];
@@ -514,7 +686,8 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
   NSMutableData *sshaData;
 
   // generate salt, if not available
-  if ([theSalt length] == 0) theSalt = [NSData generateSaltForLength: 8];
+  if ([theSalt length] == 0)
+    theSalt = [NSData generateSaltForLength: 8];
 
   // put the pass and salt together as one data array
   sshaData = [NSMutableData dataWithData: self];
@@ -541,7 +714,8 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
   NSMutableData *sshaData;
 
   // generate salt, if not available
-  if ([theSalt length] == 0) theSalt = [NSData generateSaltForLength: 8];
+  if ([theSalt length] == 0)
+    theSalt = [NSData generateSaltForLength: 8];
 
   // put the pass and salt together as one data array
   sshaData = [NSMutableData dataWithData: self];
@@ -568,7 +742,8 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
   NSMutableData *smdData;
 
   // generate salt, if not available
-  if ([theSalt length] == 0) theSalt = [NSData generateSaltForLength: 8];
+  if ([theSalt length] == 0)
+    theSalt = [NSData generateSaltForLength: 8];
 
   // put the pass and salt together as one data array
   smdData = [NSMutableData dataWithData: self];
@@ -594,9 +769,10 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
 
   if ([theSalt length] == 0)
     {
-      // make sure these characters are all printable by using base64
-      theSalt = [NSData generateSaltForLength: 8  withBase64: YES];
+      // make sure these characters are all printable
+      theSalt = [NSData generateSaltForLength: 8  withPrintable: YES];
     }
+
   cryptString = [[NSString alloc] initWithData: self  encoding: NSUTF8StringEncoding];
 
   saltData = [NSMutableData dataWithData: [[NSString stringWithFormat:@"$%@$", magic] dataUsingEncoding: NSUTF8StringEncoding]];
@@ -665,7 +841,8 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
   // crypt() works with strings, so convert NSData to strings
   cryptString = [[NSString alloc] initWithData: self  encoding: NSUTF8StringEncoding];
 
-  if ([theSalt length] == 0) theSalt = [NSData generateSaltForLength: 8 withBase64: YES];
+  if ([theSalt length] == 0)
+    theSalt = [NSData generateSaltForLength: 8 withPrintable: YES];
 
   saltString = [[NSString alloc] initWithData: theSalt  encoding: NSUTF8StringEncoding];
 
@@ -678,6 +855,143 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
     return nil;
   return [NSData dataWithBytes: buf length: strlen(buf)];
 }
+
+/**
+ * Hash the data using blowfish-crypt
+ * @param theSalt The salt to be used must not be nil, if empty, one will be generated
+ */
+- (NSData *) asBlowfishCryptUsingSalt: (NSData *) theSalt
+{
+  NSString *cleartext;
+  char hashed_password[BLF_CRYPT_BUFFER_LEN];
+  char magic_salt[BLF_CRYPT_PREFIX_LEN]; // contains $2.$nn$ + salt
+
+  if ([theSalt length] == 0)
+    {
+      // generate a salt with default complexity if none was provided
+      NSData* salt = [NSData generateSaltForLength: BLF_CRYPT_SALT_LEN];
+      if (_crypt_gensalt_blowfish_rn(BLF_CRYPT_PREFIX, BLF_CRYPT_DEFAULT_COMPLEXITY,
+        [salt bytes], BLF_CRYPT_SALT_LEN,
+        magic_salt, BLF_CRYPT_PREFIX_LEN) == NULL)
+          return nil;
+    }
+  else
+    {
+      const char* salt = [theSalt bytes];
+      if ([theSalt length] < BLF_CRYPT_PREFIX_LEN ||
+          salt[0] != '$' || salt[1] != '2' ||
+          salt[2] < 'a' || salt[2] > 'z' ||
+          salt[3] != '$')
+        {
+          return nil;
+        }
+      memcpy(magic_salt, salt, BLF_CRYPT_PREFIX_LEN);
+    }
+
+  cleartext = [[NSString alloc] initWithData: self encoding: NSUTF8StringEncoding];
+  const char* password = [cleartext UTF8String];
+
+  char* bf_res = _crypt_blowfish_rn(password, magic_salt,
+    hashed_password, BLF_CRYPT_BUFFER_LEN);
+  [cleartext autorelease];
+
+  if (bf_res == NULL)
+    return nil;
+
+  return [NSData dataWithBytes: hashed_password length: strlen(hashed_password)];
+}
+
+- (NSData *) asPBKDF2SHA1UsingSalt: (NSData *) theSalt
+{
+  NSString *saltString;
+  unsigned char hashed_password[PBKDF2_KEY_SIZE_SHA1] = {0};
+  int rounds = 0;
+
+  if ([theSalt length] == 0)
+    {
+      // generate a salt with default complexity if none was provided
+      NSData* saltData = [NSData generateSaltForLength: PBKDF2_SALT_LEN withPrintable: YES];
+      saltString = [[NSString alloc] initWithData: saltData encoding: NSUTF8StringEncoding];
+      [saltString autorelease];
+    }
+  else
+    {
+      NSString *saltAndRounds;
+      NSArray *saltAndRoundsComponents;
+      saltAndRounds = [[NSString alloc] initWithData: theSalt encoding: NSUTF8StringEncoding];
+      // salt is expected to be of the form salt$rounds
+      saltAndRoundsComponents = [saltAndRounds componentsSeparatedByString: @"$"];
+      AUTORELEASE(saltAndRounds);
+
+      if ([saltAndRoundsComponents count] != 2)
+        {
+          return nil;
+        }
+      saltString = [saltAndRoundsComponents objectAtIndex: 0];
+
+      rounds = [[saltAndRoundsComponents objectAtIndex: 1] intValue];
+    }
+
+  if (rounds == 0)
+      rounds = PBKDF2_DEFAULT_ROUNDS;
+
+  const char* password = [self bytes];
+  const unsigned char* salt = (const unsigned char*)[saltString UTF8String];
+#if defined(HAVE_GNUTLS)
+  if (!check_gnutls_init())
+    return nil;
+#endif
+  if (pkcs5_pbkdf2(password, [self length], salt, PBKDF2_SALT_LEN,
+                   hashed_password, PBKDF2_KEY_SIZE_SHA1,
+                   rounds) != 0)
+    {
+      return nil;
+    }
+
+  NSData *passwordData =
+    [NSData dataWithBytesNoCopy: hashed_password  length: PBKDF2_KEY_SIZE_SHA1  freeWhenDone: NO];
+  NSString *hexHash = [NSData encodeDataAsHexString: passwordData];
+
+  NSString* result = [NSString stringWithFormat: @"$1$%@$%u$%@", saltString, rounds, hexHash];
+  return [result dataUsingEncoding:NSUTF8StringEncoding];
+}
+
+
+#ifdef HAVE_SODIUM
+- (NSData *) asArgon2iUsingSalt: (NSData *) theSalt
+{
+  char hashed_password[crypto_pwhash_argon2i_STRBYTES];
+  int rounds = crypto_pwhash_argon2i_OPSLIMIT_INTERACTIVE;
+  size_t memlimit = crypto_pwhash_argon2i_MEMLIMIT_INTERACTIVE;
+
+  if (sodium_init() < 0)
+    return nil;
+
+  const char* password = [self bytes];
+  if (crypto_pwhash_argon2i_str(hashed_password, password, [self length], rounds, memlimit) != 0)
+    return nil;
+
+  return [NSData dataWithBytes: hashed_password length: strlen(hashed_password)];
+}
+
+# ifdef crypto_pwhash_ALG_ARGON2ID13
+- (NSData *) asArgon2idUsingSalt: (NSData *) theSalt;
+{
+  char hashed_password[crypto_pwhash_argon2id_STRBYTES];
+  int rounds = crypto_pwhash_argon2id_OPSLIMIT_INTERACTIVE;
+  size_t memlimit = crypto_pwhash_argon2id_MEMLIMIT_INTERACTIVE;
+
+  if (sodium_init() < 0)
+    return nil;
+
+  const char* password = [self bytes];
+  if (crypto_pwhash_argon2id_str(hashed_password, password, [self length], rounds, memlimit) != 0)
+    return nil;
+
+  return [NSData dataWithBytes: hashed_password length: strlen(hashed_password)];
+}
+#endif /* crypto_pwhash_ALG_ARGON2ID13 */
+#endif /* HAVE_SODIUM */
 
 /**
  * Get the salt from a password encrypted with a specied scheme
@@ -695,19 +1009,22 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
 
   // for the ssha schemes the salt is appended at the endif
   // so the range with the salt are bytes after each digest length
-  if ([theScheme caseInsensitiveCompare: @"crypt"] == NSOrderedSame)
+  if ([theScheme caseInsensitiveCompare: @"crypt"] == NSOrderedSame ||
+      [theScheme caseInsensitiveCompare: @"blf-crypt"] == NSOrderedSame)
     {
-      // for crypt schemes simply use the whole string
+      // for (blf-)crypt schemes simply use the whole string
       // the crypt() function is able to extract it by itself
       r = NSMakeRange(0, len);
     }
   else if ([theScheme caseInsensitiveCompare: @"md5-crypt"] == NSOrderedSame ||
-	   [theScheme caseInsensitiveCompare: @"sha256-crypt"] == NSOrderedSame ||
-	   [theScheme caseInsensitiveCompare: @"sha512-crypt"] == NSOrderedSame)
+      [theScheme caseInsensitiveCompare: @"sha256-crypt"] == NSOrderedSame ||
+      [theScheme caseInsensitiveCompare: @"sha512-crypt"] == NSOrderedSame ||
+      [theScheme caseInsensitiveCompare: @"pbkdf2"] == NSOrderedSame)
     {
       // md5-crypt is generated the following "$1$<salt>$<encrypted pass>"
       // sha256-crypt is generated the following "$5$<salt>$<encrypted pass>"
       // sha512-crypt is generated the following "$6$<salt>$<encrypted pass>"
+      // pbkdf2 is generated as "$1$<salt>$<rounds>$<encrypted pass>"
       NSString *cryptString;
       NSArray *cryptParts;
 
@@ -722,21 +1039,21 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
         }
       // second is the identifier of md5-crypt/sha256-crypt or sha512-crypt
       else if ([[cryptParts objectAtIndex: 1] caseInsensitiveCompare: @"1"] == NSOrderedSame ||
-	       [[cryptParts objectAtIndex: 1] caseInsensitiveCompare: @"5"] == NSOrderedSame ||
-	       [[cryptParts objectAtIndex: 1] caseInsensitiveCompare: @"6"] == NSOrderedSame)
+          [[cryptParts objectAtIndex: 1] caseInsensitiveCompare: @"5"] == NSOrderedSame ||
+          [[cryptParts objectAtIndex: 1] caseInsensitiveCompare: @"6"] == NSOrderedSame)
         {
-	  // third is the salt; convert it to NSData
-	  if ([cryptParts count] == 4)
-	    return [[cryptParts objectAtIndex: 2] dataUsingEncoding: NSUTF8StringEncoding];
-	  else
-	    {
-	      NSString *saltWithRounds;
+          // third is the salt; convert it to NSData
+          if ([cryptParts count] == 4)
+            return [[cryptParts objectAtIndex: 2] dataUsingEncoding: NSUTF8StringEncoding];
+          else
+            {
+              NSString *saltWithRounds;
 
-	      saltWithRounds = [NSString stringWithFormat: @"%@$%@", [cryptParts objectAtIndex: 2], [cryptParts objectAtIndex: 3]]; 
+              saltWithRounds = [NSString stringWithFormat: @"%@$%@", [cryptParts objectAtIndex: 2], [cryptParts objectAtIndex: 3]];
 
-	      return [saltWithRounds dataUsingEncoding: NSUTF8StringEncoding];
-	    }
-	}
+              return [saltWithRounds dataUsingEncoding: NSUTF8StringEncoding];
+            }
+        }
       // nothing good
       return [NSData data];
     }
@@ -755,6 +1072,11 @@ static void _nettle_md5_compress(uint32_t *digest, const uint8_t *input);
   else if ([theScheme caseInsensitiveCompare: @"smd5"] == NSOrderedSame)
     {
       r = NSMakeRange(MD5_DIGEST_LENGTH, len - MD5_DIGEST_LENGTH);
+    }
+  else if ([[theScheme lowercaseString] hasPrefix: @"sym"])
+    {
+      // For sym we return everything
+      r = NSMakeRange(0, len);
     }
   else
     {

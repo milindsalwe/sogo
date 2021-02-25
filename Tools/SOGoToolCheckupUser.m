@@ -1,6 +1,6 @@
 /* SOGoToolCheckup.m - this file is part of SOGo
  *
- * Copyright (C) 2017 Inverse inc.
+ * Copyright (C) 2017-2020 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
  */
 
 #import <Foundation/NSAutoreleasePool.h>
+#import <Foundation/NSCalendarDate.h>
 #import <Foundation/NSDictionary.h>
 #import <Foundation/NSEnumerator.h>
 #import <Foundation/NSString.h>
@@ -36,6 +37,8 @@
 #import <SOGo/SOGoSystemDefaults.h>
 
 #import <NGCards/iCalCalendar.h>
+#import <NGCards/iCalDateTime.h>
+#import <NGCards/iCalEvent.h>
 #import <NGCards/NGVCard.h>
 
 #import "SOGoTool.h"
@@ -125,7 +128,7 @@
               if (user)
                 [allSqlUsers addObject: user];
             }
-          [cm releaseChannel: fc];
+          [cm releaseChannel: fc  immediately: YES];
 
           users = allSqlUsers;
           max = [users count];
@@ -248,6 +251,48 @@
 		    [gcsFolder deleteContentWithName: c_name];
 		  rc = NO;
 		}
+              else
+                {
+                  iCalEvent *event;
+
+                  event = (iCalEvent *) [calendar firstChildWithTag: @"vevent"];
+                  if (event)
+                    {
+                      iCalDateTime *startDate, *endDate;
+
+                      startDate = (iCalDateTime *) [event uniqueChildWithTag: @"dtstart"];
+                      if (![startDate dateTime])
+                        {
+                          NSLog(@"Missing start date of event in path %@ with c_name = %@ (%@)", folder, c_name, [event summary]);
+                          if (delete)
+                            [gcsFolder deleteContentWithName: c_name];
+                          rc = NO;
+                        }
+                      endDate = (iCalDateTime *) [event uniqueChildWithTag: @"dtend"];
+                      if (![endDate dateTime] && ![event hasDuration])
+                        {
+                          NSLog(@"Missing end date of event in path %@ with c_name = %@ (%@)", folder, c_name, [event summary]);
+                          if (delete)
+                            [gcsFolder deleteContentWithName: c_name];
+                          rc = NO;
+                        }
+                      if ([startDate dateTime] && [endDate dateTime])
+                        {
+                          NSComparisonResult comparison;
+
+                          comparison = [[startDate dateTime] compare: [endDate dateTime]];
+                          if (([event isAllDay] && comparison == NSOrderedDescending) ||
+                              (![event isAllDay] && comparison != NSOrderedAscending))
+                            {
+                              NSLog(@"Start date (%@) is not before end date (%@) for event in path %@ with c_name = %@ (%@)",
+                                    [startDate dateTime], [endDate dateTime], folder, c_name, [event summary]);
+                              if (delete)
+                                [gcsFolder deleteContentWithName: c_name];
+                              rc = NO;
+                            }
+                        }
+                    }
+                }
 	    }
 	}
       else

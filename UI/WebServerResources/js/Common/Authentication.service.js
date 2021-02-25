@@ -62,6 +62,7 @@
           var d = $q.defer(),
               username = data.username,
               password = data.password,
+              verificationCode = data.verificationCode,
               domain = data.domain,
               language,
               rememberLogin = data.rememberLogin ? 1 : 0;
@@ -80,6 +81,7 @@
             data: {
               userName: username,
               password: password,
+              verificationCode: verificationCode,
               domain: domain,
               language: language,
               rememberLogin: rememberLogin
@@ -91,8 +93,12 @@
               d.reject({error: l('cookiesNotEnabled')});
             }
             else {
+              // Check for Google Authenticator 2FA
+              if (typeof data.GoogleAuthenticatorMissingKey != 'undefined' && response.status == 202) {
+                d.resolve({gamissingkey: 1});
+              }
               // Check password policy
-              if (typeof data.expire != 'undefined' && typeof data.grace != 'undefined') {
+              else if (typeof data.expire != 'undefined' && typeof data.grace != 'undefined') {
                 if (data.expire < 0 && data.grace > 0) {
                   d.reject({grace: data.grace});
                   //showPasswordDialog('grace', createPasswordGraceDialog, data['grace']);
@@ -110,7 +116,10 @@
             }
           }, function(response) {
             var msg, perr, data = response.data;
-            if (data && data.LDAPPasswordPolicyError) {
+            if (data && data.GoogleAuthenticatorInvalidKey) {
+              msg = l('You provided an invalid Google Authenticator key.');
+            }
+            else if (data && data.LDAPPasswordPolicyError) {
               perr = data.LDAPPasswordPolicyError;
               if (perr == passwordPolicyConfig.PolicyNoError) {
                 msg = l('Wrong username or password.');
@@ -130,7 +139,7 @@
           return d.promise;
         }, // login: function(data) { ...
 
-        changePassword: function(newPassword) {
+        changePassword: function(newPassword, oldPassword) {
           var d = $q.defer(),
               xsrfCookie = $cookies.get('XSRF-TOKEN');
 
@@ -142,7 +151,7 @@
             headers: {
               'X-XSRF-TOKEN' : xsrfCookie
             },
-            data: { newPassword: newPassword }
+            data: { newPassword: newPassword, oldPassword: oldPassword }
           }).then(d.resolve, function(response) {
             var error,
                 data = response.data,

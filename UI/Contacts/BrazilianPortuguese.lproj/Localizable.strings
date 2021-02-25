@@ -27,6 +27,9 @@
 "OfficePhone" = "Telefone Comercial";
 "Organization" = "Organização";
 "Work Phone" = "Telefone Comercial";
+"Cell" = "Célula";
+"Pager" = "Pager";
+"Pref" = "Pref";
 "Phone" = "Telefone";
 "Phones" = "Telefones";
 "Postal" = "CEP";
@@ -238,6 +241,12 @@
 = "Você não pode inscrever-se em uma pasta que você é dono.";
 "Unable to subscribe to that folder!"
 = "Não foi possível inscrever-se a esta pasta.";
+
+/* security */
+"Security" = "Segurança";
+"Uninstall" = "Desinstalar";
+"Error reading the card certificate." = "Erro ao ler o certificado.";
+"No certificate associated to card." = "Nenhum certificado associado.";
 
 /* acls */
 "Access rights to" = "Direitos de acesso para";

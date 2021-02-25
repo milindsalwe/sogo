@@ -4,22 +4,17 @@ include ../common.make
 
 WEBSERVER_RESOURCE_DIRS = css fonts img js
 JS_FILES = js/Administration.* js/Common.* js/Contacts.* js/Mailer.* js/Main.* js/Preferences.* js/Scheduler.*
-JS_LIB_FILES = js/vendor/angular-animate.* js/vendor/angular-aria.* js/vendor/angular-cookies.* js/vendor/angular-messages.* js/vendor/angular-file-upload.* js/vendor/FileSaver.* js/vendor/ng-sortable.* js/vendor/angular-material.* js/vendor/angular-sanitize.* js/vendor/angular-ui-router.* js/vendor/angular.* js/vendor/lodash.*
+JS_LIB_FILES = js/vendor/angular-animate.* js/vendor/angular-aria.* js/vendor/angular-cookies.* js/vendor/angular-messages.* js/vendor/angular-file-upload.* js/vendor/FileSaver.* js/vendor/ng-sortable.* js/vendor/angular-material.* js/vendor/angular-sanitize.* js/vendor/angular-ui-router.* js/vendor/angular.* js/vendor/lodash.* js/vendor/qrcode.*
 CSS_FILES = css/styles.css css/styles.css.map css/no-animation.css  css/no-animation.css.map
 
 .DEFAULT_GOAL := all
 
 dev:
-	npm install --production
+	npm install
 	@if [ ! -e angular-material/src ]; then \
 	  git submodule init; \
 	fi
 	git submodule update
-	@if [ -d bower_components ]; then \
-	  bower update --allow-root; \
-	else \
-	  bower install --allow-root; \
-	fi
 	grunt --stack build
 
 prod:
@@ -27,7 +22,7 @@ prod:
 	git update-index --no-assume-unchanged $(CSS_FILES) $(JS_FILES) $(JS_LIB_FILES)
 	git add -f $(CSS_FILES) $(JS_FILES) $(JS_LIB_FILES)
 	@if ! git diff --cached --quiet --exit-code; then \
-		git commit -m "(js/css) Update generated files"; \
+		git commit -m "chore(js/css): update generated files"; \
 	else \
 		echo "Nothing to commit; skipping git-commit"; \
 	fi

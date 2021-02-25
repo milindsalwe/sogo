@@ -1,7 +1,7 @@
 /* NSString+Crypto.m - this file is part of SOGo
  *
  * Copyright (C) 2012 Nicolas Höft
- * Copyright (C) 2012-2015 Inverse inc.
+ * Copyright (C) 2012-2019 Inverse inc.
  *
  * Author: Nicolas Höft
  *         Inverse inc.
@@ -41,17 +41,17 @@
 {
   NSRange r;
   int len;
-  
+
   len = [self length];
   if (len == 0)
      return @"";
   if ([self characterAtIndex:0] != '{')
     return @"";
-  
+
   r = [self rangeOfString:@"}" options:(NSLiteralSearch)];
   if (r.length == 0)
     return @"";
-  
+
   r.length   = (r.location - 1);
   r.location = 1;
   return [[self substringWithRange:r] lowercaseString];
@@ -73,7 +73,7 @@
   NSString *scheme;
   NSString *pass;
   NSArray *encodingAndScheme;
-  
+
   NSRange range;
   int selflen, len;
 
@@ -91,7 +91,7 @@
   encodingAndScheme = [NSString getDefaultEncodingForScheme: scheme];
 
   pass = [self substringWithRange: range];
-  
+
   // Returns an array with [scheme, password, encoding]
   return [NSArray arrayWithObjects: [encodingAndScheme objectAtIndex: 1], pass, [encodingAndScheme objectAtIndex: 0], nil];
 }
@@ -106,14 +106,13 @@
  */
 - (BOOL) isEqualToCrypted: (NSString *) cryptedPassword
         withDefaultScheme: (NSString *) theScheme
+                  keyPath: (NSString *) theKeyPath
 {
   NSArray *passInfo;
-  NSString *selfCrypted;
   NSString *pass;
   NSString *scheme;
-  NSData *salt;
   NSData *decodedData;
-  NSNumber *encodingNumber;
+  NSData *passwordData;
   keyEncoding encoding;
 
   // split scheme and pass
@@ -121,8 +120,7 @@
 
   scheme   = [passInfo objectAtIndex: 0];
   pass     = [passInfo objectAtIndex: 1];
-  encodingNumber = [passInfo objectAtIndex: 2];
-  encoding = [encodingNumber intValue];
+  encoding = [[passInfo objectAtIndex: 2] intValue];
 
   if (encoding == encHex)
     {
@@ -153,35 +151,26 @@
       decodedData = [pass dataUsingEncoding: NSUTF8StringEncoding];
     }
 
-  salt = [decodedData extractSalt: scheme];
-
-  // encrypt self with the salt an compare the results
-  selfCrypted = [self asCryptedPassUsingScheme: scheme
-				      withSalt: salt
-				   andEncoding: encoding];
-
-  // return always false when there was a problem
-  if (selfCrypted == nil)
-    return NO;
-
-  if ([selfCrypted isEqualToString: pass] == YES)
-    return YES;
-
-  return NO;
+  passwordData = [self dataUsingEncoding: NSUTF8StringEncoding];
+  return [decodedData verifyUsingScheme: scheme
+                           withPassword: passwordData
+                            keyPath: theKeyPath];
 }
 
 /**
  * Calls asCryptedPassUsingScheme:withSalt:andEncoding: with an empty salt and uses
  * the default encoding.
  *
- * @param passwordScheme 
+ * @param passwordScheme: The password scheme to hash the cleartext password.
  * @return If successful, the encrypted and encoded NSString of the format {scheme}pass, or nil if the scheme did not exists or an error occured
  */
 - (NSString *) asCryptedPassUsingScheme: (NSString *) passwordScheme
+                                keyPath: (NSString *) theKeyPath
 {
   return [self asCryptedPassUsingScheme: passwordScheme
                                withSalt: [NSData data]
-                            andEncoding: encDefault];
+                            andEncoding: encDefault
+                                keyPath: theKeyPath];
 }
 
 /**
@@ -198,6 +187,7 @@
 - (NSString *) asCryptedPassUsingScheme: (NSString *) passwordScheme
                                withSalt: (NSData *) theSalt
                             andEncoding: (keyEncoding) userEncoding
+                                keyPath: (NSString *) theKeyPath
 {
   keyEncoding dataEncoding;
   NSData* cryptedData;
@@ -219,7 +209,10 @@
 
   // convert NSString to NSData and apply encryption scheme
   cryptedData = [self dataUsingEncoding: NSUTF8StringEncoding];
-  cryptedData = [cryptedData asCryptedPassUsingScheme: passwordScheme  withSalt: theSalt];
+  cryptedData = [cryptedData asCryptedPassUsingScheme: passwordScheme
+                                             withSalt: theSalt
+                                              keyPath: theKeyPath];
+
   // abort on unsupported scheme or error
   if (cryptedData == nil)
     return nil;
@@ -229,7 +222,7 @@
       // hex encoding
       return [NSData encodeDataAsHexString: cryptedData];
     }
-  else if(dataEncoding == encBase64)
+  else if (dataEncoding == encBase64)
     {
        // base64 encoding
       NSString *s = [[NSString alloc] initWithData: [cryptedData dataByEncodingBase64WithLineLength: 1024]
@@ -352,7 +345,7 @@
 
   // See http://en.wikipedia.org/wiki/LM_hash#Algorithm
   d = [[self uppercaseString] dataUsingEncoding: NSWindowsCP1252StringEncoding];
-  
+
   return [[NSData encodeDataAsHexString: [d asLM]] uppercaseString];
 }
 

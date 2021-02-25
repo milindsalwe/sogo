@@ -75,7 +75,6 @@ SOGo_HEADER_FILES = \
 	SOGoWebDAVAclManager.h		\
 	SOGoWebDAVValue.h		\
 	SOGoMailer.h			\
-	SOGoGroup.h			\
 	SOGoUser.h			\
 	\
 	CardElement+SOGo.h		\
@@ -87,7 +86,8 @@ SOGo_HEADER_FILES = \
 	WOContext+SOGo.h		\
 	\
 	SOGoCredentialsFile.h		\
-	SOGoTextTemplateFile.h
+	SOGoTextTemplateFile.h		\
+	SOGoZipArchiver.h
 
 all::
 	@touch SOGoBuild.m
@@ -155,7 +155,6 @@ SOGo_OBJC_FILES = \
 	SOGoWebDAVAclManager.m		\
 	SOGoWebDAVValue.m		\
 	SOGoMailer.m			\
-	SOGoGroup.m			\
 	SOGoUser.m			\
 	\
 	CardElement+SOGo.m		\
@@ -167,9 +166,10 @@ SOGo_OBJC_FILES = \
 	WOContext+SOGo.m		\
 	\
 	SOGoCredentialsFile.m		\
-	SOGoTextTemplateFile.m
+	SOGoTextTemplateFile.m		\
+	SOGoZipArchiver.m
 
-SOGo_C_FILES += lmhash.c
+SOGo_C_FILES += lmhash.c aes.c crypt_blowfish.c pkcs5_pbkdf2.c
 
 SOGo_RESOURCE_FILES = \
 	SOGoDefaults.plist \
@@ -206,7 +206,7 @@ endif
 ADDITIONAL_TOOL_LIBS += -Lobj -lSOGo$(LIBRARY_NAME_SUFFIX)
 ADDITIONAL_INCLUDE_DIRS += -I../../SOPE/
 ADDITIONAL_LIB_DIRS += -L../../SOPE/GDLContentStore/obj/
-ADDITIONAL_LDFLAGS += -lmemcached
+ADDITIONAL_LDFLAGS += -lmemcached -lzip
 
 -include GNUmakefile.preamble
 ifneq ($(FHS_INSTALL_ROOT),)

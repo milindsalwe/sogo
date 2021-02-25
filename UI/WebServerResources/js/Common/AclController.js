@@ -24,7 +24,7 @@
     vm.confirmChange = confirmChange;
     vm.removeUser = removeUser;
     vm.addUser = addUser;
-    vm.selectAllRights = selectAllRights;
+    vm.toggleAllRights = toggleAllRights;
     vm.selectUser = selectUser;
     vm.hasNoRight = hasNoRight;
     vm.showRights = showRights;
@@ -57,7 +57,7 @@
       folder.$acl.$saveUsersRights().then(function() {
         $mdDialog.hide();
       }, function(data, status) {
-        Dialog.alert(l('Warning'), l('An error occured please try again.'));
+        Dialog.alert(l('Warning'), l('An error occured, please try again.'));
       });
     }
 
@@ -87,8 +87,8 @@
       }
     }
 
-    function selectAllRights(user) {
-      folder.$acl.$selectAllRights(user);
+    function toggleAllRights(user) {
+      folder.$acl.$toggleAllRights(user);
     }
 
     function selectUser(user, $event) {

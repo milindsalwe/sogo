@@ -18,25 +18,45 @@
       <md-toolbar>
         <div class="md-toolbar-tools">
           <!-- expand dialog -->
-          <md-button ng-click="editor.toggleFullscreen()"
-                     class="md-icon-button md-primary md-hue-1 hide show-gt-xs"
+          <md-button ng-click="editor.toggleFullscreen($event)"
+                     class="md-icon-button hide show-gt-xs"
                      aria-hidden="true"
                      ng-if="!isPopup">
-            <md-icon class="icon-fullscreen"
-                     ng-class="{ 'icon-fullscreen-exit': editor.isFullscreen }"><!-- fullscreen --></md-icon>
+            <md-icon>{{ editor.isFullscreen ? 'fullscreen_exit' : 'fullscreen' }}</md-icon>
           </md-button>
           <!-- from -->
           <sg-avatar-image class="hide-xs"
                            sg-email="editor.message.editable.from"
                            size="32">person</sg-avatar-image>
-          <md-input-container class="sg-no-wrap">
-            <label><var:string label:value="From"/></label>
-            <md-select name="from"
-                       ng-model="editor.message.editable.from">
-              <md-option ng-value="identity" ng-repeat="identity in editor.identities track by $index">{{identity}}</md-option>
-            </md-select>
-          </md-input-container>
-          <div flex="flex"><!-- spacer --></div>
+          <md-autocomplete
+              class="md-margin md-default-theme md-bg md-hue-1" flex="flex"
+              required="required"
+              md-input-name="from"
+              md-require-match="true"
+              md-selected-item="editor.fromIdentity"
+              md-search-text="editor.identitySearchText"
+              md-selected-item-change="editor.setFromIdentity(identity)"
+              md-items="identity in editor.identitySearch(editor.identitySearchText)"
+              md-item-text="identity.full"
+              md-min-length="0"
+              md-escape-options="clear"
+              label:placeholder="Choose which identity to send this message from"
+              md-menu-class="md-2-line">
+            <md-item-template>
+              <div class="sg-tile-content">
+                <div class="sg-md-subhead">
+                  <span md-highlight-text="editor.identitySearchText"
+                        md-highlight-flags="gi">{{ identity.full }}</span>
+                </div>
+                <div class="sg-md-body">
+                  <i ng-bind-html="editor.account.getTextSignature(identity)"><!-- signature --></i>
+                </div>
+              </div>
+            </md-item-template>
+            <div ng-messages="messageForm.from.$error">
+              <div ng-message="required">This field is required</div>
+            </div>
+          </md-autocomplete>
           <md-button class="sg-icon-button" ng-click="editor.send()"
                      ng-disabled="!(editor.message.editable.to.length > 0 || editor.message.editable.cc.length > 0 || editor.message.editable.bcc.length > 0) || editor.uploader.isUploading || messageForm.$invalid || messageForm.$submitted"
                      sg-ripple-click="mailEditor">
@@ -69,10 +89,11 @@
               <md-chips ng-model="editor.message.editable.to"
                         md-separator-keys="editor.recipientSeparatorKeys"
                         md-transform-chip="editor.addRecipient($chip, 'to')"
-                        md-add-on-blur="true">
+                        md-add-on-blur="true"
+                        md-autofocus="editor.isNew()"
+                        md-autocomplete-snap="width">
                 <md-autocomplete
-                    class="sg-chips-autocomplete"
-                    md-autofocus="editor.isNew()"
+                    md-menu-class="md-2-line"
                     md-search-text="editor.autocomplete.to.searchText"
                     md-selected-item="editor.autocomplete.to.selected"
                     md-items="user in editor.contactFilter(editor.autocomplete.to.searchText)"
@@ -81,17 +102,24 @@
                     md-no-cache="true"
                     label:placeholder="Add a recipient">
                   <md-item-template>
-                    <span class="md-contact-suggestion">
-                      <span class="md-contact-name"
-                            md-highlight-text="editor.autocomplete.to.searchText"
-                            md-highlight-flags="^i">{{user.$$fullname}}</span>
-                      <span class="md-contact-email"
-                            md-highlight-text="editor.autocomplete.to.searchText"
-                            md-highlight-flags="^i">{{user.$$email}}</span>
-                    </span>
+                    <div class="sg-tile-content">
+                      <div class="sg-md-subhead">
+                        <div md-highlight-text="editor.autocomplete.to.searchText"
+                             md-highlight-flags="gi">{{ user.$shortFormat(editor.autocomplete.to.searchText) }}</div>
+                      </div>
+                      <div class="sg-md-body"
+                           md-colors="::{color: 'default-background-500'}">{{ user.containername }}</div>
+                    </div>
                   </md-item-template>
                 </md-autocomplete>
-                <md-chip-template>{{$chip}}</md-chip-template>
+                <md-chip-template>
+                  <div class="sg-tile-content">
+                    {{$chip}}
+                    <md-button class="sg-tile-btn" md-colors="::{ color: 'accent-600'}" ng-if="$chip.isExpandable" ng-click="editor.expandGroup($chip, 'to')">
+                      <md-icon md-colors="::{ color: 'accent-600'}">add_box</md-icon><span ng-bind="$chip.members.length"></span>
+                    </md-button>
+                  </div>
+                </md-chip-template>
               </md-chips>
             </div>
 
@@ -103,28 +131,36 @@
               <md-chips ng-model="editor.message.editable.cc"
                         md-separator-keys="editor.recipientSeparatorKeys"
                         md-transform-chip="editor.addRecipient($chip, 'cc')"
-                        md-add-on-blur="true">
+                        md-add-on-blur="true"
+                        md-autocomplete-snap="width">
                 <md-autocomplete
-                    class="sg-chips-autocomplete"
+                    md-menu-class="md-2-line"
                     md-search-text="editor.autocomplete.cc.searchText"
                     md-selected-item="editor.autocomplete.cc.selected"
                     md-items="user in editor.contactFilter(editor.autocomplete.cc.searchText)"
-                    md-min-length="3"
-                    md-delay="300"
+                    var:md-min-length="minimumSearchLength"
+                    md-delay="150"
                     md-no-cache="true"
                     label:placeholder="Add a recipient">
                   <md-item-template>
-                    <span class="md-contact-suggestion">
-                      <span class="md-contact-name"
-                            md-highlight-text="editor.autocomplete.to.searchText"
-                            md-highlight-flags="^i">{{user.$$fullname}}</span>
-                      <span class="md-contact-email"
-                            md-highlight-text="editor.autocomplete.to.searchText"
-                            md-highlight-flags="^i">{{user.$$email}}</span>
-                    </span>
+                    <div class="sg-tile-content">
+                      <div class="sg-md-subhead">
+                        <div md-highlight-text="editor.autocomplete.cc.searchText"
+                             md-highlight-flags="gi">{{ user.$shortFormat(editor.autocomplete.cc.searchText) }}</div>
+                      </div>
+                      <div class="sg-md-body"
+                           md-colors="::{color: 'default-background-500'}">{{ user.containername }}</div>
+                    </div>
                   </md-item-template>
                 </md-autocomplete>
-                <md-chip-template>{{$chip}}</md-chip-template>
+                <md-chip-template>
+                  <div class="sg-tile-content">
+                    {{$chip}}
+                    <md-button class="sg-tile-btn" md-colors="::{ color: 'accent-600'}" ng-if="$chip.isExpandable" ng-click="editor.expandGroup($chip, 'cc')">
+                      <md-icon md-colors="::{ color: 'accent-600'}">add_box</md-icon><span ng-bind="$chip.members.length"></span>
+                    </md-button>
+                  </div>
+                </md-chip-template>
               </md-chips>
             </div>
 
@@ -136,28 +172,36 @@
               <md-chips ng-model="editor.message.editable.bcc"
                         md-separator-keys="editor.recipientSeparatorKeys"
                         md-transform-chip="editor.addRecipient($chip, 'bcc')"
-                        md-add-on-blur="true">
+                        md-add-on-blur="true"
+                        md-autocomplete-snap="width">
                 <md-autocomplete
-                    class="sg-chips-autocomplete"
+                    md-menu-class="md-2-line"
                     md-selected-item="editor.autocomplete.bcc.selected"
                     md-search-text="editor.autocomplete.bcc.searchText"
                     md-items="user in editor.contactFilter(editor.autocomplete.bcc.searchText)"
-                    md-min-length="3"
-                    md-delay="300"
+                    var:md-min-length="minimumSearchLength"
+                    md-delay="150"
                     md-no-cache="true"
                     label:placeholder="Add a recipient">
                   <md-item-template>
-                    <span class="md-contact-suggestion">
-                      <span class="md-contact-name"
-                            md-highlight-text="editor.autocomplete.to.searchText"
-                            md-highlight-flags="^i">{{user.$$fullname}}</span>
-                      <span class="md-contact-email"
-                            md-highlight-text="editor.autocomplete.to.searchText"
-                            md-highlight-flags="^i">{{user.$$email}}</span>
-                    </span>
+                    <div class="sg-tile-content">
+                      <div class="sg-md-subhead">
+                        <div md-highlight-text="editor.autocomplete.bcc.searchText"
+                             md-highlight-flags="gi">{{ user.$shortFormat(editor.autocomplete.bcc.searchText) }}</div>
+                      </div>
+                      <div class="sg-md-body"
+                           md-colors="::{color: 'default-background-500'}">{{ user.containername }}</div>
+                    </div>
                   </md-item-template>
                 </md-autocomplete>
-                <md-chip-template>{{$chip}}</md-chip-template>
+                <md-chip-template>
+                  <div class="sg-tile-content">
+                    {{$chip}}
+                    <md-button class="sg-tile-btn" md-colors="::{ color: 'accent-600'}" ng-if="$chip.isExpandable" ng-click="editor.expandGroup($chip, 'bcc')">
+                      <md-icon md-colors="::{ color: 'accent-600'}">add_box</md-icon><span ng-bind="$chip.members.length"></span>
+                    </md-button>
+                  </div>
+                </md-chip-template>
               </md-chips>
             </div>
 
@@ -205,33 +249,31 @@
                 </md-menu-item>
                 <md-menu-item>
                   <md-button ng-click="editor.message.editable.priority = 1">
-                    <md-icon ng-class="{ 'icon-check': editor.message.editable.priority == 1}"><!-- highest --></md-icon>
+                    <md-icon>{{ editor.message.editable.priority == 1 ? 'check' : null }}</md-icon>
                     <var:string label:value="highest"/>
                   </md-button>
                 </md-menu-item>
                 <md-menu-item>
                   <md-button ng-click="editor.message.editable.priority = 2">
-                    <md-icon ng-class="{ 'icon-check': editor.message.editable.priority == 2}"><!-- high --></md-icon>
+                    <md-icon>{{ editor.message.editable.priority == 2 ? 'check' : null }}</md-icon>
                     <var:string label:value="high"/>
                   </md-button>
                 </md-menu-item>
                 <md-menu-item>
                   <md-button ng-click="editor.message.editable.priority = 3">
-                    <md-icon ng-class="{ 'icon-check':
-                                       !editor.message.editable.priority
-                                       || editor.message.editable.priority == 3}"><!-- normal --></md-icon>
+                    <md-icon>{{ (!editor.message.editable.priority || editor.message.editable.priority == 3) ? 'check' : null }}</md-icon>
                     <var:string label:value="normal"/>
                   </md-button>
                 </md-menu-item>
                 <md-menu-item>
                   <md-button ng-click="editor.message.editable.priority = 4">
-                    <md-icon ng-class="{ 'icon-check': editor.message.editable.priority == 4}"><!-- low --></md-icon>
+                    <md-icon>{{ editor.message.editable.priority == 4 ? 'check' : null }}</md-icon>
                     <var:string label:value="low"/>
                   </md-button>
                 </md-menu-item>
                 <md-menu-item>
                   <md-button ng-click="editor.message.editable.priority = 5">
-                    <md-icon ng-class="{ 'icon-check': editor.message.editable.priority == 5}"><!-- lowest --></md-icon>
+                    <md-icon>{{ editor.message.editable.priority == 5 ? 'check' : null }}</md-icon>
                     <var:string label:value="lowest"/>
                   </md-button>
                 </md-menu-item>
@@ -243,21 +285,27 @@
 
         <!-- MESSAGE CONTENT -->
         <md-input-container class="md-block sg-mail-editor-content">
-          <textarea name="content" var:class="editorClass"
+          <textarea name="content" class="plain-text"
+                    ng-if="editor.composeType == 'text'"
                     rows="9"
-                    ck-locale="editor.localeCode"
-                    ck-margin="16px"
-                    ck-focus="editor.onHTMLFocus($event)"
                     ng-model="editor.message.editable.text"
                     ng-focus="editor.onTextFocus($event)"
-                    md-autofocus="!editor.isNew()"
+                    md-autofocus="::!editor.isNew()"
                     md-no-resize="md-no-resize"
-                    md-detect-hidden="md-detect-hidden" />
+                    md-no-autogrow="md-no-autogrow"
+                    sg-autogrow="true"
+                    md-detect-hidden="md-detect-hidden"><!-- plain text editor --></textarea>
+          <sg-ckeditor id="message-content"
+                       ng-if="editor.composeType == 'html'"
+                       config="editor.ckConfig"
+                       on-instance-ready="editor.onHTMLReady($editor)"
+                       on-focus="editor.onHTMLFocus($editor)"
+                       ng-model="editor.message.editable.text"><!-- HTML editor --></sg-ckeditor>
         </md-input-container>
       </md-dialog-content>
 
       <!-- ATTACHMENTS -->
-      <md-dialog-content class="md-actions sg-mail-editor-attachments"
+      <md-dialog-actions class="sg-mail-editor-attachments"
                          layout="row" layout-align="space-between start">
         <!-- Attachments -->
         <md-chips ng-model="editor.uploader.queue"
@@ -288,7 +336,7 @@
           -->
           <!-- multiple="multiple" -->
         </div>
-      </md-dialog-content>
+      </md-dialog-actions>
     </form>
 
     <sg-ripple class="md-default-theme md-accent md-bg"

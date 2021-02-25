@@ -260,25 +260,38 @@ String.prototype.parseDate = function(localeProvider, format) {
     return new Date(NaN);
 };
 
+Date.prototype.clone = function() {
+  var newDate = new Date();
+
+  newDate.setTime(this.getTime());
+
+  return newDate;
+};
+
 Date.prototype.daysUpTo = function(otherDate) {
-    var days = [];
+  var days = [];
 
-    var day1 = this.getTime();
-    var day2 = otherDate.getTime();
-    if (day1 > day2) {
-        var tmp = day1;
-        day1 = day2;
-        day2 = tmp;
-    }
+  var day1 = this.getTime();
+  var day2 = otherDate.getTime();
+  if (day1 > day2) {
+    var tmp = day1;
+    day1 = day2;
+    day2 = tmp;
+  }
 
-    var nbrDays = Math.round((day2 - day1) / 86400000) + 1;
-    for (var i = 0; i < nbrDays; i++) {
-        var newDate = new Date();
-        newDate.setTime(day1 + (i * 86400000));
-        days.push(newDate);
-    }
+  var DAY_SECS = 25 * 60 * 60 * 1000; // compensate for DST
+  var nbrDays = Math.round((day2 - day1) / DAY_SECS) + 1;
+  for (var i = 0; i < nbrDays; i++) {
+    var newDate = new Date();
+    newDate.setTime(day1 + (i * DAY_SECS));
+    newDate.setHours(this.getHours());
+    newDate.setMinutes(this.getMinutes());
+    newDate.setSeconds(this.getSeconds());
+    newDate.setMilliseconds(this.getMilliseconds());
+    days.push(newDate);
+  }
 
-    return days;
+  return days;
 };
 
 Date.prototype.minutesTo = function(otherDate) {
@@ -462,7 +475,7 @@ Date.prototype.getDayString = function() {
     return newString;
 };
 
-// MMHH
+// HH00
 Date.prototype.getHourString = function() {
     var newString = this.getHours() + '00';
     if (newString.length == 3)

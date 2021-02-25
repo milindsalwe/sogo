@@ -15,8 +15,7 @@
                      class="md-icon-button md-primary md-hue-1 hide show-gt-xs"
                      aria-hidden="true"
                      ng-if="::!isPopup">
-            <md-icon class="icon-fullscreen"
-                     ng-class="{ 'icon-fullscreen-exit': centerIsClose }"><!-- fullscreen --></md-icon>
+            <md-icon>{{ centerIsClose ? 'fullscreen_exit' : 'fullscreen' }}</md-icon>
           </md-button>
           <md-button class="md-icon-button"
                      ng-if="::isPopup"
@@ -32,8 +31,7 @@
           </md-button>
           <div class="md-flex"><!-- spacer --></div>
           <md-button class="sg-icon-button" label:aria-label="Flagged" ng-click="viewer.message.toggleFlag()">
-            <md-icon ng-class="{'icon-star md-accent md-hue-2': viewer.message.isflagged,
-                               'icon-star-border': !viewer.message.isflagged}"><!-- flag --></md-icon>
+            <md-icon ng-class="{ 'sg-icon-star': viewer.message.isflagged }">{{ viewer.message.isflagged ? 'star' : 'star_border' }}</md-icon>
           </md-button>
           <md-button class="sg-icon-button"
                      ng-hide="::viewer.message.isDraft"
@@ -127,55 +125,91 @@
             <h5 class="sg-md-headline" ng-bind="viewer.message.subject"><!-- subject --></h5>
             <time class="msg-date" datetime="viewer.message.date" ng-bind="::viewer.message.date"><!-- date --></time>
           </div>
-          <div>
-            <div layout="row" layout-wrap="layout-wrap">
-              <div class="pseudo-input-container--compact" flex="50" flex-xs="100">
-                <div layout="row" layout-align="start center">
-                  <sg-avatar-image class="md-tile-left"
-                                   sg-email="::viewer.message.from[0].email"
-                                   size="40">person</sg-avatar-image>
-                  <div>
-                    <span ng-bind="::viewer.message.from[0].name"><!-- from --></span>
-                    <br/>
-                    <a href="#" class="md-caption"
-                       ng-bind="::viewer.message.from[0].email"
-                       ng-click="viewer.newMessage($event, { to: [viewer.message.from[0].full] })"><!-- from --></a>
-                  </div>
+          <div layout="row" layout-wrap="layout-wrap">
+            <div class="pseudo-input-container--compact" flex="50" flex-xs="100">
+              <div layout="row" layout-align="start center">
+                <sg-avatar-image class="md-tile-left"
+                                 sg-email="::viewer.message.from[0].email"
+                                 size="40">person</sg-avatar-image>
+                <div>
+                  <span ng-bind="::viewer.message.from[0].name"><!-- from --></span>
+                  <a href="#" class="md-caption"
+                     ng-bind="::viewer.message.from[0].email"
+                     ng-click="viewer.selectRecipient(viewer.message.from[0], $event)"><!-- from --></a>
                 </div>
               </div>
-              <div class="msg-recipients" layout="column" flex="50" flex-xs="100">
-                <div class="pseudo-input-container--compact">
-                  <label class="pseudo-input-label">
-                    <var:string label:value="To"/>
-                  </label>
-                  <div class="pseudo-input-field"
-                       ng-hide="viewer.$showDetailedRecipients">
-                    <a href="#" ng-click="viewer.toggleDetailedRecipients($event)"
-                       ng-bind="::viewer.message.$shortRecipients(5)"><!-- to --></a>
-                  </div>
-                  <div class="pseudo-input-field" ng-show="viewer.$showDetailedRecipients">
-                    <span ng-repeat="recipient in viewer.message.to">
-                      <a href="#" ng-bind="::recipient.full"
-                         ng-click="viewer.newMessage($event, { to: [recipient.full] })"><!-- recipient --></a>
-                    </span>
-                  </div>
+            </div>
+            <div class="msg-recipients" layout="column" flex="50" flex-xs="100">
+              <!-- to -->
+              <div class="pseudo-input-container--compact" ng-show="::viewer.message.to.length > 0">
+                <label class="pseudo-input-label">
+                  <var:string label:value="To"/>
+                </label>
+                <div class="pseudo-input-field" ng-hide="viewer.$showDetailedRecipients">
+                  <a href="#" ng-click="viewer.toggleDetailedRecipients($event)"
+                     ng-bind="::viewer.message.$shortRecipients(5)"><!-- to --></a>
                 </div>
-                <div class="pseudo-input-container--compact" ng-show="viewer.$showDetailedRecipients">
-                  <label class="pseudo-input-label" ng-show="::viewer.message.cc.length > 0">
-                    <var:string label:value="Cc"/>
-                  </label>
-                  <div class="pseudo-input-field">
-                    <span ng-repeat="recipient in ::viewer.message.cc">
-                      <a href="#" ng-bind="::recipient.full"
-                         ng-click="viewer.newMessage($event, { to: [recipient.full] })"><!-- recipient --></a>
-                    </span>
-                    <md-button style="float: right"
-                               label:aria-label="Hide"
-                               ng-click="viewer.toggleDetailedRecipients($event)">
-                      <var:string label:value="Hide"/>
-                    </md-button>
-                  </div>
+                <div class="pseudo-input-field" ng-show="viewer.$showDetailedRecipients">
+                  <md-chips
+                      class="sg-dense sg-readonly"
+                      ng-model="::viewer.message.to"
+                      md-removable="::false"
+                      readonly="::true">
+                    <md-chip-template
+                        ng-click="viewer.selectRecipient($chip, $event)"
+                        ng-focus="viewer.focusChip($event)"
+                        ng-blur="viewer.blurChip($event)">
+                      {{ $chip.name || $chip.email }}
+                    </md-chip-template>
+                  </md-chips>
                 </div>
+              </div>
+              <!-- cc -->
+              <div class="pseudo-input-container--compact" ng-show="viewer.$showDetailedRecipients">
+                <label class="pseudo-input-label" ng-show="::viewer.message.cc.length > 0">
+                  <var:string label:value="Cc"/>
+                </label>
+                <div class="pseudo-input-field" ng-show="::viewer.message.cc.length > 0">
+                  <md-chips
+                      class="sg-dense sg-readonly"
+                      ng-model="::viewer.message.cc"
+                      md-removable="::false"
+                      readonly="::true">
+                    <md-chip-template
+                        ng-click="viewer.selectRecipient($chip, $event)"
+                        ng-focus="viewer.focusChip($event)"
+                        ng-blur="viewer.blurChip($event)">
+                      {{ $chip.name || $chip.email }}
+                    </md-chip-template>
+                  </md-chips>
+                </div>
+              </div>
+              <!-- bcc -->
+              <div class="pseudo-input-container--compact" ng-show="viewer.$showDetailedRecipients">
+                <label class="pseudo-input-label" ng-show="::viewer.message.bcc.length > 0">
+                  <var:string label:value="Bcc"/>
+                </label>
+                <div class="pseudo-input-field" ng-show="::viewer.message.bcc.length > 0">
+                  <md-chips
+                      class="sg-dense sg-readonly"
+                      ng-model="::viewer.message.bcc"
+                      md-removable="::false"
+                      readonly="::true">
+                    <md-chip-template
+                        ng-click="viewer.selectRecipient($chip, $event)"
+                        ng-focus="viewer.focusChip($event)"
+                        ng-blur="viewer.blurChip($event)">
+                      {{ $chip.name || $chip.email }}
+                    </md-chip-template>
+                  </md-chips>
+                </div>
+                <md-button
+                    ng-hide="viewer.$alwaysShowDetailedRecipients || !viewer.$showDetailedRecipients"
+                    style="float: right"
+                    label:aria-label="Hide"
+                    ng-click="viewer.toggleDetailedRecipients($event)">
+                  <var:string label:value="Hide"/>
+                </md-button>
               </div>
             </div>
           </div>
@@ -208,7 +242,7 @@
           </div>
 
           <!-- S/MIME Signature -->
-          <sg-block-toggle class="sg-no-print" layout="column"
+          <sg-block-toggle class="hide-print" layout="column"
                            ng-show="::viewer.message.signed">
             <md-divider><!-- divider --></md-divider>
             <md-list-item class="sg-button-toggle">
@@ -248,7 +282,7 @@
           </sg-block-toggle>
 
           <!-- S/MIME Encryption -->
-          <div class="sg-no-print" layout="column"
+          <div class="hide-print" layout="column"
                ng-show="::viewer.message.encrypted">
             <md-divider><!-- divider --></md-divider>
             <md-list-item>
@@ -261,7 +295,7 @@
           </div>
 
           <!-- Load external images -->
-          <div class="sg-no-print" ng-show="viewer.message.$hasUnsafeContent">
+          <div class="hide-print" ng-show="viewer.message.$hasUnsafeContent">
             <md-divider><!-- divider --></md-divider>
             <md-list-item class="md-clickable" layout="row" layout-align="space-between center"
                           label:aria-label="Load Images"
@@ -273,7 +307,7 @@
           </div>
 
           <!-- Return Receipt / Send MDN -->
-          <md-whiteframe class="md-whiteframe-z2 sg-no-print" layout="column" layout-align="center start"
+          <md-whiteframe class="md-whiteframe-z2 hide-print" layout="column" layout-align="center start"
                          ng-show="viewer.message.shouldAskReceipt == 1">
             <div layout="row" layout-align="start center">
               <div class="md-tile-left">
@@ -296,7 +330,7 @@
             <div class="msg-body">
               <div layout="row" layout-wrap="layout-wrap">
                 <div class="mailer_mailcontent" layout="row" layout-wrap="layout-wrap"
-                     ng-repeat="part in viewer.message.$content() track by $index"
+                     ng-repeat="part in viewer.message.$content()"
                      ng-class="::part.msgclass">
                   <div class="md-flex sg-mail-part"
                        tabindex="-1"
@@ -330,4 +364,43 @@
       </md-card>
     </div>
   </div>
+
+  <!-- template of contextual menu for a recipient -->
+  <script type="text/ng-template" id="UIxMailViewRecipientMenu">
+    <div md-whiteframe="3">
+      <md-menu-content class="md-dense" width="3">
+        <md-menu-item>
+          <md-button disabled="disabled" md-menu-align-target="md-menu-align-target">
+            {{ $menuCtrl.recipient.full }}
+          </md-button>
+        </md-menu-item>
+        <md-menu-item>
+          <md-button type="button"
+                     ng-click="$menuCtrl.newMessage($event, { to: [$menuCtrl.recipient.full] })">
+            <var:string label:value="Write a new message"/>
+          </md-button>
+        </md-menu-item>
+        <md-menu-item>
+          <md-menu md-position-mode="cascade cascade">
+            <md-button
+                label:aria-label="Add to Address Book..."
+                ng-mouseenter="$mdMenu.open($event)"
+                ng-keydown="$mdMenu.onKeyDown($event)">
+              <var:string label:value="Add to Address Book..."/>
+            </md-button>
+            <md-menu-content class="md-dense" width="4">
+              <md-menu-item ng-repeat="addressbook in $menuCtrl.addressbooks track by addressbook.id">
+                <md-button ng-click="$menuCtrl.newCard($menuCtrl.recipient, addressbook.id)">{{addressbook.name}}</md-button>
+              </md-menu-item>
+              <md-menu-item ng-repeat="addressbook in $menuCtrl.subscriptions track by addressbook.id">
+                <md-button ng-click="$menuCtrl.newCard($menuCtrl.recipient, addressbook.id)"
+                           ng-disabled="!addressbook.acls.objectCreator">{{addressbook.name}}</md-button>
+              </md-menu-item>
+            </md-menu-content>
+          </md-menu>
+        </md-menu-item>
+      </md-menu-content>
+    </div>
+  </script>
+
 </container>

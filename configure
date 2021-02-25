@@ -25,6 +25,8 @@ ARG_CFGSSL="auto"
 ARG_WITH_DEBUG=1
 ARG_WITH_STRIP=0
 ARG_ENABLE_SAML2=0
+ARG_ENABLE_MFA=0
+ARG_ENABLE_SODIUM=1
 ARG_WITH_LDAP_CONFIG=0
 
 GNUSTEP_INSTALLATION_DOMAIN="LOCAL"
@@ -74,9 +76,10 @@ Installation directories:
   --configmake=PATH       path to the config file being created
   --enable-debug          turn on debugging and compile time warnings
   --enable-strip          turn on stripping of debug symbols
-  --with-ssl=SSL          specify ssl library (none, libssl, gnutls, auto) [auto]
+  --with-ssl=SSL          specify ssl library (none, ssl, gnutls, auto) [auto]
   --enable-saml2          enable support for SAML2 authentication (requires liblasso)
-
+  --enable-mfa            enable multi-factor authentication (requires liboath)
+  --disable-sodium        disable building with libsodium (will disable argon2 password schemes)
   --enable-ldap-config    enable LDAP based configuration of SOGo
 
 _ACEOF
@@ -106,7 +109,17 @@ printParas() {
   else
     echo "  saml2 support:  no";
   fi
-  if test $ARG_WITH_LDAP_CONFIG = 1; then 
+  if test $ARG_ENABLE_MFA = 1; then
+    echo "  mfa support:  yes";
+  else
+    echo "  mfa support:  no";
+  fi
+  if test $ARG_ENABLE_SODIUM = 1; then
+    echo "  argon2 support:  yes";
+  else
+    echo "  argon2 support:  no";
+  fi
+  if test $ARG_WITH_LDAP_CONFIG = 1; then
     echo "  ldap-based configuration:  yes";
   else
     echo "  ldap-based configuration:  no";
@@ -246,7 +259,7 @@ genConfigMake() {
   cfgwrite "SOPE_MINOR_VERSION=9"
 
   # Languages
-  cfgwrite "SOGO_LANGUAGES=Arabic Basque BrazilianPortuguese Catalan ChineseChina ChineseTaiwan Croatian Czech Danish Dutch English Finnish French German Hebrew Hungarian Icelandic Italian Japanese Latvian Lithuanian Macedonian NorwegianBokmal NorwegianNynorsk Polish Portuguese Romanian Russian Serbian Slovak Slovenian SpanishArgentina SpanishSpain Swedish TurkishTurkey Ukrainian Welsh"
+  cfgwrite "SOGO_LANGUAGES=Arabic Basque BrazilianPortuguese Catalan ChineseChina ChineseTaiwan Croatian Czech Danish Dutch English Finnish French German Hebrew Hungarian Icelandic Indonesian Italian Japanese Latvian Lithuanian Macedonian NorwegianBokmal NorwegianNynorsk Polish Portuguese Romanian Russian Serbian SerbianLatin Slovak Slovenian SpanishArgentina SpanishSpain Swedish TurkishTurkey Ukrainian Welsh"
   
   #cfgwrite "# print on the cmdline that this file is being used"
   #cfgwrite "all :: "
@@ -312,6 +325,11 @@ genConfigMake() {
       cfgwrite "saml2_config:=yes"
   fi
 
+  if test $ARG_ENABLE_MFA = 1; then
+      cfgwrite "ADDITIONAL_CPPFLAGS += -DMFA_CONFIG=1"
+      cfgwrite "mfa_config:=yes"
+  fi
+
   if test $ARG_WITH_LDAP_CONFIG = 1; then
       cfgwrite "ADDITIONAL_CPPFLAGS += -DLDAP_CONFIG=1"
       cfgwrite "ldap_config:=yes"
@@ -324,7 +342,7 @@ checkLinking() {
   # library-name => $1, type => $2
   local oldpwd="${PWD}"
   local tmpdir=".configure-test-$$"
-  
+
   mkdir $tmpdir
   cd $tmpdir
   cat > dummytool.c <<EOF
@@ -379,7 +397,7 @@ EOF
 }
 
 checkDependencies() {
-  cfgwrite "BASE_LIBS := `gnustep-config --base-libs`"
+  cfgwrite "BASE_LIBS := `gnustep-config --base-libs` -lzip"
   if test "x$ARG_ENABLE_SAML2" = "x1"; then
       checkLinking "lasso"   required;
       if test $? = 0; then
@@ -388,6 +406,15 @@ checkDependencies() {
           lasso_libs="`pkg-config lasso --libs` `pkg-config gobject-2.0 --libs`"
           cfgwrite "LASSO_LIBS := $lasso_libs"
       fi;
+  fi
+  if test "x$ARG_ENABLE_MFA" = "x1"; then
+      checkLinking "oath"   required;
+      if test $? = 0; then
+          cfgwrite "MFA_LIBS := -loath"
+      fi;
+  fi
+  if test "x$ARG_ENABLE_SODIUM" = "x1"; then
+    checkLinking "sodium"   required;
   fi
   if test "x$ARG_CFGSSL" = "xauto"; then
       checkLinking "ssl"     optional;
@@ -480,7 +507,15 @@ processOption() {
     "x--enable-saml2")
         ARG_ENABLE_SAML2=1
 	;;
-
+    "x--enable-mfa")
+        ARG_ENABLE_MFA=1
+	;;
+    "x--enable-sodium")
+        ARG_ENABLE_SODIUM=1
+	;;
+    "x--disable-sodium")
+        ARG_ENABLE_SODIUM=0
+	;;
     "x--enable-ldap-config")
         ARG_WITH_LDAP_CONFIG=1
 	;;

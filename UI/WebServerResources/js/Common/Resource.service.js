@@ -42,6 +42,18 @@
    */
   angular.module('SOGo.Common').factory('Resource', Resource.$factory);
 
+  Resource.prototype.encodeURL = function(url) {
+    var _this = this,
+        segments = url;
+
+    if (!angular.isArray(segments)) {
+      segments = url.split('/');
+    }
+    return _.map(segments, function(segment) {
+      return _this._window.encodeURIComponent(segment.toString());
+    });
+  };
+
   /**
    * @function userResource
    * @memberof Resource.prototype
@@ -85,7 +97,7 @@
   Resource.prototype.fetch = function(folderId, action, params) {
     var deferred = this._q.defer(),
         path = [this._path];
-    if (folderId) path.push(folderId.split('/'));
+    if (folderId) path.push(this.encodeURL(folderId));
     if (action)   path.push(action);
     path = _.compact(_.flatten(path)).join('/');
 
@@ -93,6 +105,45 @@
       method: 'GET',
       url: path,
       params: params
+    })
+      .then(function(response) {
+        return deferred.resolve(response.data);
+      }, deferred.reject);
+
+    return deferred.promise;
+  };
+
+  /**
+   * @function quietFetch
+   * @memberof Resource.prototype
+   * @desc Fetch resource using a specific folder, action and/or parameters, but disable the global
+   *       error interceptor.
+   * @param {string} folderId - the folder on which the action will be applied (ex: addressbook, calendar)
+   * @param {string} action - the action to be used in the URL
+   * @param {Object} params - Object parameters injected through the $http service
+   * @return a promise
+   */
+  Resource.prototype.quietFetch = function(folderId, action, params) {
+    var deferred = this._q.defer(),
+        path = [this._path];
+    if (folderId) path.push(this.encodeURL(folderId));
+    if (action)   path.push(action);
+    path = _.compact(_.flatten(path)).join('/');
+
+    this._http({
+      method: 'GET',
+      url: path,
+      params: params,
+      transformResponse: function(data) {
+        var jsonData;
+        try {
+          jsonData = angular.fromJson(data);
+        }
+        catch (e) {
+          jsonData = {};
+        }
+        return angular.extend({ quiet: true }, jsonData);
+      }
     })
       .then(function(response) {
         return deferred.resolve(response.data);
@@ -150,7 +201,7 @@
   Resource.prototype.post = function(id, action, data) {
     var deferred = this._q.defer(),
         path = [this._path];
-    if (id) path.push(id);
+    if (id) path.push(this.encodeURL(id));
     if (action) path.push(action);
     path = _.compact(_.flatten(path)).join('/');
 
@@ -187,9 +238,13 @@
     var deferred = this._q.defer(),
         type = (options && options.type)? options.type : 'application/zip',
         path = [this._path];
-    if (id) path.push(id);
+    if (id) path.push(this.encodeURL(id));
     if (action) path.push(action);
     path = _.compact(_.flatten(path)).join('/');
+
+    if (typeof saveAs == 'undefined') {
+      throw new Error('To use Resource.download, FileSaver.js must be loaded.');
+    }
 
     function getFileNameFromHeader(header) {
       var result;
@@ -224,12 +279,7 @@
         else {
           getFileNameFromHeader(headers('content-disposition'));
         }
-        if (!saveAs) {
-          throw new Error('To use Resource.download, FileSaver.js must be loaded.');
-        }
-        else {
-          saveAs(blob, fileName);
-        }
+        saveAs(blob, fileName);
       }
     });
   };
@@ -255,7 +305,7 @@
    */
   Resource.prototype.remove = function(uid) {
     var deferred = this._q.defer(),
-        path = this._path + '/' + uid + '/delete';
+        path = _.flatten([this._path, this.encodeURL(uid), 'delete']).join('/');
 
     this._http
       .get(path)

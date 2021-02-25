@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2009-2017 Inverse inc.
+  Copyright (C) 2009-2019 Inverse inc.
   Copyright (C) 2004-2005 SKYRIX Software AG
 
   This file is part of SOGo.
@@ -21,7 +21,7 @@
 */
 
 #import <Foundation/NSValue.h>
-#import <Foundation/NSTask.h>
+#import <Foundation/NSFileHandle.h>
 
 #import <NGObjWeb/NSException+HTTP.h>
 #import <NGObjWeb/WOContext+SoObjects.h>
@@ -60,10 +60,12 @@
 #import <SOGo/SOGoSystemDefaults.h>
 #import <SOGo/SOGoUser.h>
 #import <SOGo/SOGoUserFolder.h>
+#import <SOGo/SOGoUserManager.h>
 #import <SOGo/SOGoUserSettings.h>
 #import <SOGo/WORequest+SOGo.h>
 #import <SOGo/WOResponse+SOGo.h>
 #import <SOGo/SOGoMailer.h>
+#import <SOGo/SOGoZipArchiver.h>
 
 #import "EOQualifier+MailDAV.h"
 #import "SOGoMailAccount.h"
@@ -522,9 +524,9 @@ _compareFetchResultsByMODSEQ (id entry1, id entry2, void *data)
   NSDictionary *msgs;
   NSArray *messages;
   NSData *content, *zipContent;
-  NSTask *zipTask;
-  NSMutableArray *zipTaskArguments;
   WOResponse *response;
+  SOGoZipArchiver *archiver;
+  NSFileHandle *zipFileHandle;
   int i;
 
   if (!archiveName)
@@ -539,21 +541,15 @@ _compareFetchResultsByMODSEQ (id entry1, id entry2, void *data)
       return (WOResponse *)error;
   }
 
-  zipPath = [[SOGoSystemDefaults sharedSystemDefaults] zipPath];
   fm = [NSFileManager defaultManager];
-  if (![fm fileExistsAtPath: zipPath])
-    {
+  zipPath = [NSString stringWithFormat: @"%@/%@", spoolPath, archiveName];
+  archiver = [SOGoZipArchiver archiverAtPath: zipPath];
+  if (archiver == nil) {
+      [self errorWithFormat: @"Failed to create zip archive at %@", spoolPath];
       error = [NSException exceptionWithHTTPStatus: 500
-                                            reason: @"zip not available"];
+                                            reason: @"Internal server error"];
       return (WOResponse *)error;
-    }
-  
-  zipTask = [[NSTask alloc] init];
-  [zipTask setCurrentDirectoryPath: spoolPath];
-  [zipTask setLaunchPath: zipPath];
-  
-  zipTaskArguments = [NSMutableArray arrayWithObjects: nil];
-  [zipTaskArguments addObject: @"SavedMessages.zip"];
+  }
 
   msgs = (NSDictionary *)[self fetchUIDs: uids  
                                    parts: [NSArray arrayWithObject: @"BODY.PEEK[]"]];
@@ -562,30 +558,26 @@ _compareFetchResultsByMODSEQ (id entry1, id entry2, void *data)
   for (i = 0; i < [messages count]; i++)
     {
       content = [[[messages objectAtIndex: i] objectForKey: @"body[]"] objectForKey: @"data"];
-      fileName = [NSString stringWithFormat:@"%@/%@.eml", spoolPath, [uids objectAtIndex: i]];;
-      [content writeToFile: fileName atomically: YES];
-    
-      [zipTaskArguments addObject:
-                          [NSString stringWithFormat:@"%@.eml", [uids objectAtIndex: i]]];
-    }
-  
-  [zipTask setArguments: zipTaskArguments];
-  [zipTask launch];
-  [zipTask waitUntilExit];
-  
-  [zipTask release];
-  
-  zipContent = [[NSData alloc] initWithContentsOfFile: 
-                           [NSString stringWithFormat: @"%@/SavedMessages.zip", spoolPath]];
-  
-  for (i = 0; i < [zipTaskArguments count]; i++)
-    {
-      fileName = [zipTaskArguments objectAtIndex: i];
-      [fm removeFileAtPath:
-            [NSString stringWithFormat: @"%@/%@", spoolPath, fileName] handler: nil];
+      fileName = [NSString stringWithFormat:@"%@.eml", [uids objectAtIndex: i]];
+      [archiver putFileWithName: fileName andData: content];
     }
 
+  [archiver close];
+
   response = [context response];
+
+  // Check if SOPE has support for serving files directly
+  if ([response respondsToSelector: @selector(setContentFile:)]) {
+      zipFileHandle = [NSFileHandle fileHandleForReadingAtPath: zipPath];
+      [response setContentFile: zipFileHandle];
+  } else {
+      zipContent = [[NSData alloc] initWithContentsOfFile:zipPath];
+      [response setContent:zipContent];
+      [zipContent release];
+  }
+
+  [fm removeFileAtPath: zipPath handler: nil];
+
   baseName = [archiveName stringByDeletingPathExtension];
   extension = [archiveName pathExtension];
   if ([extension length] > 0)
@@ -603,9 +595,6 @@ _compareFetchResultsByMODSEQ (id entry1, id entry2, void *data)
   [response setHeader: [NSString stringWithFormat: @"attachment; filename=\"%@\"",
                                  qpFileName]
                forKey: @"Content-Disposition"];
-  [response setContent: zipContent];
-
-  [zipContent release];
 
   return response;
 }
@@ -812,7 +801,7 @@ _compareFetchResultsByMODSEQ (id entry1, id entry2, void *data)
       else
         {
           recipient = [junkSettings objectForKey: @"notJunkEmailAddress"];
-          subject = [[self labelForKey: @"Report: Marked messages as not not junk"] asQPSubjectString: @"utf-8"];
+          subject = [[self labelForKey: @"Report: Marked messages as not junk"] asQPSubjectString: @"utf-8"];
         }
 
       limit = [[junkSettings objectForKey: @"limit"] intValue];
@@ -882,7 +871,6 @@ _compareFetchResultsByMODSEQ (id entry1, id entry2, void *data)
               // We reached the limit or the end of the array
               if ((i%limit) == 0 || i == [uids count]-1)
                 {
-                  id <SOGoAuthenticator> authenticator;
                   NGMimeMessageGenerator *generator;
 
                   [messageToSend setBody: body];
@@ -890,13 +878,11 @@ _compareFetchResultsByMODSEQ (id entry1, id entry2, void *data)
                   generator = [[[NGMimeMessageGenerator alloc] init] autorelease];
                   data = [generator generateMimeFromPart: messageToSend];
 
-                  authenticator = [SOGoDAVAuthenticator sharedSOGoDAVAuthenticator];
-
                   error = [[SOGoMailer mailerWithDomainDefaults: [[context activeUser] domainDefaults]]
                             sendMailData: data
                             toRecipients: [NSArray arrayWithObject: recipient]
                                   sender: [[identities objectAtIndex: 0] objectForKey: @"email"]
-                            withAuthenticator: authenticator
+                            withAuthenticator: [self authenticatorInContext: context]
                                inContext: context];
 
                   if (error)
@@ -1423,15 +1409,32 @@ _compareFetchResultsByMODSEQ (id entry1, id entry2, void *data)
 
 - (NSString *) _sogoACLUIDToIMAPUID: (NSString *) uid
 {
+  NSString *domain;
+  NSDictionary *dict;
+  SOGoUser *user;
+
+  if ([uid isEqualToString: defaultUserID])
+    return uid;
+
+  domain = [[context activeUser] domain];
+  dict = [[SOGoUserManager sharedUserManager] contactInfosForUserWithUIDorEmail: uid
+                                                                       inDomain: domain];
+
+  if (dict && [[dict objectForKey: @"isGroup"] boolValue])
+    return [[[[context activeUser] domainDefaults] imapAclGroupIdPrefix]
+             stringByAppendingString: uid];
+
+  user = [SOGoUser userWithLogin: uid];
+
   if ([uid hasPrefix: @"@"])
     return [[[[context activeUser] domainDefaults] imapAclGroupIdPrefix]
              stringByAppendingString: [uid substringFromIndex: 1]];
   else if ([[[context activeUser] domainDefaults] forceExternalLoginWithEmail])
-    {
-      return [[[SOGoUser userWithLogin: uid] primaryIdentity] objectForKey: @"email"];
-    }
-  else
-    return uid;
+      return [[user primaryIdentity] objectForKey: @"email"];
+
+  return [[SOGoUserManager sharedUserManager]
+                     getExternalLoginForUID: [user loginInDomain]
+                                   inDomain: [user domain]];
 }
 
 - (void) _removeIMAPExtUsernames

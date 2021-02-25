@@ -1,6 +1,6 @@
 /* UIxPreferences.m - this file is part of SOGo
  *
- * Copyright (C) 2007-2018 Inverse inc.
+ * Copyright (C) 2007-2021 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -113,10 +113,6 @@ static NSArray *reminderValues = nil;
         referenceDate = [referenceDate addYear:0 month:0 day:(-[referenceDate dayOfMonth] + 1) hour:0 minute:0 second:0];
       ASSIGN (today, referenceDate);
 
-      calendarCategories = nil;
-      calendarCategoriesColors = nil;
-      category = nil;
-
       ASSIGN (daysOfWeek, [locale objectForKey: NSWeekDayNameArray]);
 
       dd = [user domainDefaults];
@@ -157,10 +153,6 @@ static NSArray *reminderValues = nil;
   [user release];
   [sieveFilters release];
   [vacationOptions release];
-  [calendarCategories release];
-  [calendarCategoriesColors release];
-  [category release];
-  [contactsCategories release];
   [forwardOptions release];
   [daysOfWeek release];
   [addressBooksIDWithDisplayName release];
@@ -200,56 +192,6 @@ static NSArray *reminderValues = nil;
 {
   return [[[iCalTimeZone knownTimeZoneNames] sortedArrayUsingSelector: @selector (localizedCaseInsensitiveCompare:)] jsonRepresentation];
 }
-
-// - (NSString *) userTimeZone
-// {
-//   NSString *name;
-//   iCalTimeZone *tz;
-
-//   name = [userDefaults timeZoneName];
-//   tz = [iCalTimeZone timeZoneForName: name];
-
-//   if (!tz)
-//     {
-//       // The specified timezone is not in our Olson database.
-//       // Look for a known timezone with the same GMT offset.
-//       NSString *current;
-//       NSCalendarDate *now;
-//       NSEnumerator *zones;
-//       BOOL found;
-//       unsigned int offset;
-
-//       found = NO;
-//       now = [NSCalendarDate calendarDate];
-//       offset = [[userDefaults timeZone] secondsFromGMTForDate: now];
-//       zones = [[iCalTimeZone knownTimeZoneNames] objectEnumerator];
-
-//       while ((current = [zones nextObject]))
-// 	{
-// 	  tz = [iCalTimeZone timeZoneForName: current];
-// 	  if ([[tz periodForDate: now] secondsOffsetFromGMT] == offset)
-// 	    {
-// 	      found = YES;
-// 	      break;
-// 	    }
-// 	}
-
-//       if (found)
-// 	{
-// 	  [self warnWithFormat: @"User %@ has an unknown timezone (%@) -- replaced by %@", [user login], name, current];
-// 	  name = current;
-// 	}
-//       else
-// 	[self errorWithFormat: @"User %@ has an unknown timezone (%@)", [user login], name];
-//     }
-
-//   return name;
-// }
-
-// - (void) setUserTimeZone: (NSString *) newUserTimeZone
-// {
-//   [userDefaults setTimeZoneName: newUserTimeZone];
-// }
 
 //
 // Used by wox template
@@ -302,19 +244,6 @@ static NSArray *reminderValues = nil;
 
   return shortDateFormatText;
 }
-
-// - (NSString *) userShortDateFormat
-// {
-//   return [userDefaults shortDateFormat];
-// }
-
-// - (void) setUserShortDateFormat: (NSString *) newFormat
-// {
-//   if ([newFormat isEqualToString: @"default"])
-//     [userDefaults unsetShortDateFormat];
-//   else
-//     [userDefaults setShortDateFormat: newFormat];
-// }
 
 //
 // Used internally
@@ -385,14 +314,6 @@ static NSArray *reminderValues = nil;
   return longDateFormatText;
 }
 
-// - (void) setUserLongDateFormat: (NSString *) newFormat
-// {
-//   if ([newFormat isEqualToString: @"default"])
-//     [userDefaults unsetLongDateFormat];
-//   else
-//     [userDefaults setLongDateFormat: newFormat];
-// }
-
 //
 // Used by wox template
 //
@@ -447,19 +368,6 @@ static NSArray *reminderValues = nil;
   return timeFormatText;
 }
 
-// - (NSString *) userTimeFormat
-// {
-//   return [userDefaults timeFormat];
-// }
-
-// - (void) setUserTimeFormat: (NSString *) newFormat
-// {
-//   if ([newFormat isEqualToString: @"default"])
-//     [userDefaults unsetTimeFormat];
-//   else
-//     [userDefaults setTimeFormat: newFormat];
-// }
-
 //
 // Used by wox template
 //
@@ -483,16 +391,6 @@ static NSArray *reminderValues = nil;
   return [daysOfWeek objectAtIndex: [item intValue]];
 }
 
-// - (NSString *) userWeekStartDay
-// {
-//   return [NSString stringWithFormat: @"%d", [userDefaults firstDayOfWeek]];
-// }
-
-// - (void) setUserWeekStartDay: (NSString *) newDay
-// {
-//   [userDefaults setFirstDayOfWeek: [newDay intValue]];
-// }
-
 //
 // Used by wox template
 //
@@ -512,16 +410,6 @@ static NSArray *reminderValues = nil;
 {
   return [self labelForKey: [NSString stringWithFormat: @"%@Calendar", item]];
 }
-
-// - (NSString *) userDefaultCalendar
-// {
-//   return [userDefaults defaultCalendar];
-// }
-
-// - (void) setUserDefaultCalendar: (NSString *) newValue
-// {
-//   [userDefaults setDefaultCalendar: newValue];
-// }
 
 //
 // Used by wox template
@@ -548,26 +436,6 @@ static NSArray *reminderValues = nil;
   return [self labelForKey: [NSString stringWithFormat: @"%@_item",
                                       item]];
 }
-
-// - (void) setEventsDefaultClassification: (NSString *) newValue
-// {
-//   [userDefaults setCalendarEventsDefaultClassification: newValue];
-// }
-
-// - (NSString *) eventsDefaultClassification
-// {
-//   return [userDefaults calendarEventsDefaultClassification];
-// }
-
-// - (void) setTasksDefaultClassification: (NSString *) newValue
-// {
-//   [userDefaults setCalendarTasksDefaultClassification: newValue];
-// }
-
-// - (NSString *) tasksDefaultClassification
-// {
-//   return [userDefaults calendarTasksDefaultClassification];
-// }
 
 //
 // Used by wox template
@@ -601,40 +469,6 @@ static NSArray *reminderValues = nil;
   return text;
 }
 
-// - (void) setReminder: (NSString *) theReminder
-// {
-//   NSString *value;
-//   NSUInteger index;
-
-//   index = NSNotFound;
-//   value = @"NONE";
-
-//   if (theReminder && [theReminder caseInsensitiveCompare: @"-"] != NSOrderedSame)
-//     index = [reminderItems indexOfObject: theReminder];
-
-//   if (index != NSNotFound)
-//     value = [reminderValues objectAtIndex: index];
-
-//   [userDefaults setCalendarDefaultReminder: value];
-// }
-
-// - (NSString *) reminder
-// {
-//   NSString *value;
-//   NSUInteger index;
-
-//   value = [userDefaults calendarDefaultReminder];
-//   if (value != nil)
-//     {
-//       index = [reminderValues indexOfObject: value];
-
-//       if (index != NSNotFound)
-//         return [reminderItems objectAtIndex: index];
-//     }
-
-//   return @"NONE";
-// }
-
 //
 // Used by wox template
 //
@@ -654,89 +488,11 @@ static NSArray *reminderValues = nil;
   return hours;
 }
 
-// - (NSString *) userDayStartTime
-// {
-//   return [NSString stringWithFormat: @"%02d:00",
-//                    [userDefaults dayStartHour]];
-// }
-
-// - (void) setUserDayStartTime: (NSString *) newTime
-// {
-//   [userDefaults setDayStartTime: newTime];
-// }
-
-// - (NSString *) userDayEndTime
-// {
-//   return [NSString stringWithFormat: @"%02d:00",
-//                    [userDefaults dayEndHour]];
-// }
-
-// - (void) setUserDayEndTime: (NSString *) newTime
-// {
-//   [userDefaults setDayEndTime: newTime];
-// }
-
-// - (void) setBusyOffHours: (BOOL) busyOffHours
-// {
-//   [userDefaults setBusyOffHours: busyOffHours];
-// }
-
-// - (BOOL) busyOffHours
-// {
-//   return [userDefaults busyOffHours];
-// }
-
-// - (NSArray *) whiteList
-// {
-//   SOGoUserSettings *us;
-//   NSMutableDictionary *moduleSettings;
-//   NSArray *whiteList;
-
-//   us = [user userSettings];
-//   moduleSettings = [us objectForKey: @"Calendar"];
-//   whiteList = [moduleSettings objectForKey:@"PreventInvitationsWhitelist"];
-//   return whiteList;
-// }
-
-// - (void) setWhiteList: (NSString *) whiteListString
-// {
-//   SOGoUserSettings *us;
-//   NSMutableDictionary *moduleSettings;
-
-//   us = [user userSettings];
-//   moduleSettings = [us objectForKey: @"Calendar"];
-//   [moduleSettings setObject: whiteListString forKey: @"PreventInvitationsWhitelist"];
-//   [us synchronize];
-// }
-
-// - (void) setPreventInvitations: (BOOL) preventInvitations
-// {
-//   SOGoUserSettings *us;
-//   NSMutableDictionary *moduleSettings;
-//   us = [user userSettings];
-//   moduleSettings = [us objectForKey: @"Calendar"];
-//   [moduleSettings setObject: [NSNumber numberWithBool: preventInvitations] forKey: @"PreventInvitations"];
-//   [us synchronize];
-// }
-
-// - (BOOL) preventInvitations
-// {
-//   SOGoUserSettings *us;
-//   NSMutableDictionary *moduleSettings;
-//   us = [user userSettings];
-//   moduleSettings = [us objectForKey: @"Calendar"];
-//   return [[moduleSettings objectForKey: @"PreventInvitations"] boolValue];
-// }
-
 - (NSArray *) shortWeekDaysList
 {
-  static NSArray *shortWeekDaysList = nil;
+  NSArray *shortWeekDaysList = nil;
 
-  if (!shortWeekDaysList)
-    {
-      shortWeekDaysList = [locale objectForKey: NSShortWeekDayNameArray];
-      [shortWeekDaysList retain];
-    }
+  shortWeekDaysList = [locale objectForKey: NSShortWeekDayNameArray];
 
   return shortWeekDaysList;
 }
@@ -770,47 +526,6 @@ static NSArray *reminderValues = nil;
   return [self labelForKey: [NSString stringWithFormat: @"firstWeekOfYear_%@",
                                       item]];
 }
-
-// - (NSString *) userFirstWeek
-// {
-//   return [userDefaults firstWeekOfYear];
-// }
-
-// - (void) setUserFirstWeek: (NSString *) newFirstWeek
-// {
-//   [userDefaults setFirstWeekOfYear: newFirstWeek];
-// }
-
-/* Mailer */
-// - (void) setAddOutgoingAddresses: (BOOL) addOutgoingAddresses
-// {
-//   [userDefaults setMailAddOutgoingAddresses: addOutgoingAddresses];
-// }
-
-// - (BOOL) addOutgoingAddresses
-// {
-//   return [userDefaults mailAddOutgoingAddresses];
-// }
-
-// - (void) setShowSubscribedFoldersOnly: (BOOL) showSubscribedFoldersOnly
-// {
-//   [userDefaults setMailShowSubscribedFoldersOnly: showSubscribedFoldersOnly];
-// }
-
-// - (BOOL) showSubscribedFoldersOnly
-// {
-//   return [userDefaults mailShowSubscribedFoldersOnly];
-// }
-
-// - (void) setSortByThreads: (BOOL) sortByThreads
-// {
-//   [userDefaults setMailSortByThreads: sortByThreads];
-// }
-
-// - (BOOL) sortByThreads
-// {
-//   return [userDefaults mailSortByThreads];
-// }
 
 //
 // Used by wox template
@@ -864,16 +579,6 @@ static NSArray *reminderValues = nil;
   return localAddressBooks;
 }
 
-// - (NSString *) userAddressBook
-// {
-//   return [userDefaults selectedAddressBook];
-// }
-
-// - (void) setUserAddressBook: (NSString *) newSelectedAddressBook
-// {
-//   [userDefaults setSelectedAddressBook: newSelectedAddressBook];
-// }
-
 //
 // Used by wox template
 //
@@ -918,16 +623,6 @@ static NSArray *reminderValues = nil;
   return [self labelForKey: [NSString stringWithFormat: @"refreshview_%@", item]];
 }
 
-// - (NSString *) userRefreshViewCheck
-// {
-//   return [userDefaults refreshViewCheck];
-// }
-
-// - (void) setUserRefreshViewCheck: (NSString *) newRefreshViewCheck
-// {
-//   [userDefaults setRefreshViewCheck: newRefreshViewCheck];
-// }
-
 //
 // Used by wox template
 //
@@ -944,16 +639,6 @@ static NSArray *reminderValues = nil;
   return [self labelForKey:
                  [NSString stringWithFormat: @"messageforward_%@", item]];
 }
-
-// - (NSString *) userMessageForwarding
-// {
-//   return [userDefaults mailMessageForwarding];
-// }
-
-// - (void) setUserMessageForwarding: (NSString *) newMessageForwarding
-// {
-//   [userDefaults setMailMessageForwarding: newMessageForwarding];
-// }
 
 //
 // Used by wox template
@@ -972,16 +657,6 @@ static NSArray *reminderValues = nil;
                  [NSString stringWithFormat: @"replyplacement_%@", item]];
 }
 
-// - (NSString *) userReplyPlacement
-// {
-//   return [userDefaults mailReplyPlacement];
-// }
-
-// - (void) setUserReplyPlacement: (NSString *) newReplyPlacement
-// {
-//   [userDefaults setMailReplyPlacement: newReplyPlacement];
-// }
-
 //
 // Used by wox template
 //
@@ -998,16 +673,6 @@ static NSArray *reminderValues = nil;
 {
   return [NSArray arrayWithObjects: @"above", @"below", nil];
 }
-
-// - (void) setUserSignaturePlacement: (NSString *) newSignaturePlacement
-// {
-//   [userDefaults setMailSignaturePlacement: newSignaturePlacement];
-// }
-
-// - (NSString *) userSignaturePlacement
-// {
-//   return [userDefaults mailSignaturePlacement];
-// }
 
 //
 // Used by wox template
@@ -1026,16 +691,6 @@ static NSArray *reminderValues = nil;
                                         @"composemessagestype_%@", item]];
 }
 
-// - (NSString *) userComposeMessagesType
-// {
-//   return [userDefaults mailComposeMessageType];
-// }
-
-// - (void) setUserComposeMessagesType: (NSString *) newType
-// {
-//   [userDefaults setMailComposeMessageType: newType];
-// }
-
 //
 // Used by wox template
 //
@@ -1052,26 +707,6 @@ static NSArray *reminderValues = nil;
   return [self labelForKey: [NSString stringWithFormat:
                                         @"displayremoteinlineimages_%@", item]];
 }
-
-// - (NSString *) userDisplayRemoteInlineImages
-// {
-//   return [userDefaults mailDisplayRemoteInlineImages];
-// }
-
-// - (void) setAutoSave: (NSString *) theValue
-// {
-//   [userDefaults setMailAutoSave: theValue];
-// }
-
-// - (NSString *) autoSave
-// {
-//   return [userDefaults mailAutoSave];
-// }
-
-// - (void) setUserDisplayRemoteInlineImages: (NSString *) newType
-// {
-//   [userDefaults setMailDisplayRemoteInlineImages: newType];
-// }
 
 //
 // Used by wox template
@@ -1108,6 +743,11 @@ static NSArray *reminderValues = nil;
   return [[user domainDefaults] vacationEnabled];
 }
 
+- (BOOL) isVacationPeriodEnabled
+{
+  return [[user domainDefaults] vacationPeriodEnabled];
+}
+
 - (NSString *) vacationHeader
 {
   NSString *path;
@@ -1142,74 +782,41 @@ static NSArray *reminderValues = nil;
   return text;
 }
 
-// - (void) setSieveFiltersValue: (NSString *) newValue
-// {
-//   sieveFilters = [newValue objectFromJSONString];
-//   if (sieveFilters)
-//     {
-//       if ([sieveFilters isKindOfClass: [NSArray class]])
-//         [sieveFilters retain];
-//       else
-//         sieveFilters = nil;
-//     }
-// }
-
-// - (NSString *) sieveFiltersValue
-// {
-//   return [sieveFilters jsonRepresentation];
-// }
-
-// - (void) setEnableVacation: (BOOL) enableVacation
-// {
-//   [vacationOptions setObject: [NSNumber numberWithBool: enableVacation]
-//                       forKey: @"enabled"];
-// }
-
-// - (BOOL) enableVacation
-// {
-//   return [[vacationOptions objectForKey: @"enabled"] boolValue];
-// }
-
-// - (void) setAutoReplyText: (NSString *) theText
-// {
-//   [vacationOptions setObject: theText forKey: @"autoReplyText"];
-// }
-
-// - (NSString *) autoReplyText
-// {
-//   return [vacationOptions objectForKey: @"autoReplyText"];
-// }
-
-// - (void) setAutoReplyEmailAddresses: (NSString *) theAddresses
-// {
-//   NSArray *addresses;
-
-//   addresses = [[theAddresses componentsSeparatedByString: @","]
-//                 trimmedComponents];
-//   [vacationOptions setObject: addresses
-// 		      forKey: @"autoReplyEmailAddresses"];
-// }
+//
+// Used internally
+//
+- (NSString *) defaultEmailAddresses
+{
+  return [[[user allEmails] uniqueObjects] jsonRepresentation];
+}
 
 //
 // Used internally
 //
-- (NSString *) _defaultEmailAddresses
+- (NSDictionary *) _localizedCategoryLabels
 {
-  NSArray *addressesList;
-  NSMutableArray *uniqueAddressesList;
-  NSString *address;
-  unsigned int i;
+  NSArray *categoryLabels, *localizedCategoryLabels;
+  NSDictionary *labelsDictionary;
 
-  uniqueAddressesList = [NSMutableArray array];
-  addressesList = [NSMutableArray arrayWithArray: [user allEmails]];
-  for (i = 0; i < [addressesList count]; i++)
-    {
-      address = [addressesList objectAtIndex: i];
-      if (![uniqueAddressesList containsObject: address])
-	[uniqueAddressesList addObject: address];
-    }
+  labelsDictionary = nil;
+  localizedCategoryLabels = [[self labelForKey: @"calendar_category_labels"
+                                   withResourceManager: [self resourceManager]]
+                              componentsSeparatedByString: @","];
+  categoryLabels = [[[self resourceManager]
+                                      stringForKey: @"calendar_category_labels"
+                                      inTableNamed: nil
+                                  withDefaultValue: @""
+                                         languages: [NSArray arrayWithObject: @"English"]]
+                                      componentsSeparatedByString: @","];
 
-  return [uniqueAddressesList componentsJoinedByString: @", "];
+  if ([localizedCategoryLabels count] == [categoryLabels count])
+    labelsDictionary = [NSDictionary dictionaryWithObjects: localizedCategoryLabels
+                                                   forKeys: categoryLabels];
+  else
+    [self logWithFormat: @"ERROR: localizable strings calendar_category_labels is incorrect for language %@",
+          [[[context activeUser] userDefaults] language]];
+
+  return labelsDictionary;
 }
 
 //
@@ -1217,12 +824,15 @@ static NSArray *reminderValues = nil;
 //
 - (NSString *) defaultCalendarCategoriesColors
 {
-  NSArray *labels, *colors;
+  NSArray *labels;
+  NSDictionary *localizedLabels, *colors;
   NSMutableDictionary *defaultCategoriesColors;
+  NSString *label, *localizedLabel, *color;
   unsigned int i;
 
-  labels = [[self labelForKey: @"calendar_category_labels"] componentsSeparatedByString: @","];
-  colors = [[[SOGoSystemDefaults sharedSystemDefaults] calendarCategoriesColors] allValues];
+  localizedLabels = [self _localizedCategoryLabels];
+  labels = [[SOGoSystemDefaults sharedSystemDefaults] calendarCategories];
+  colors = [[SOGoSystemDefaults sharedSystemDefaults] calendarCategoriesColors];
 
   if ([colors count] > [labels count])
     {
@@ -1232,8 +842,14 @@ static NSArray *reminderValues = nil;
   defaultCategoriesColors = [NSMutableDictionary dictionary];
   for (i = 0; i < [colors count] && i < [labels count]; i++)
     {
-      [defaultCategoriesColors setObject: [colors objectAtIndex: i]
-                                  forKey: [labels objectAtIndex: i]];
+      label = [labels objectAtIndex: i];
+      color = [colors objectForKey: label];
+      if (!(localizedLabel = [localizedLabels objectForKey: label]))
+        {
+          localizedLabel = label;
+        }
+      [defaultCategoriesColors setObject: color
+                                  forKey: localizedLabel];
     }
 
   return [defaultCategoriesColors jsonRepresentation];
@@ -1242,15 +858,18 @@ static NSArray *reminderValues = nil;
 //
 // Used by templates
 //
-- (NSString *) autoReplyEmailAddresses
+- (NSString *) defaultContactsCategories
 {
-  NSArray *addressesList;
+  NSArray *contactsCategories;
 
-  addressesList = [vacationOptions objectForKey: @"autoReplyEmailAddresses"];
+  contactsCategories = [[[[self labelForKey: @"contacts_category_labels"  withResourceManager: [self resourceManager]]
+                              componentsSeparatedByString: @","] trimmedComponents]
+                             sortedArrayUsingSelector: @selector (localizedCaseInsensitiveCompare:)];
 
-  return (addressesList
-          ? [addressesList componentsJoinedByString: @", "]
-          : [self _defaultEmailAddresses]);
+  if (!contactsCategories)
+    contactsCategories = [NSArray array];
+
+  return [contactsCategories jsonRepresentation];
 }
 
 //
@@ -1296,105 +915,6 @@ static NSArray *reminderValues = nil;
   return daysBetweenResponses;
 }
 
-// - (void) setDaysBetweenResponses: (NSNumber *) theDays
-// {
-//   [vacationOptions setObject: theDays
-// 		      forKey: @"daysBetweenResponse"];
-// }
-
-// - (NSString *) daysBetweenResponses
-// {
-//   NSString *days;
-
-//   days = [vacationOptions objectForKey: @"daysBetweenResponse"];
-//   if (!days)
-//     days = @"7"; // defaults to 7 days
-
-//   return days;
-// }
-
-// - (void) setIgnoreLists: (BOOL) ignoreLists
-// {
-//   [vacationOptions setObject: [NSNumber numberWithBool: ignoreLists]
-// 		      forKey: @"ignoreLists"];
-// }
-
-// - (BOOL) ignoreLists
-// {
-//   NSNumber *obj;
-//   BOOL ignore;
-
-//   obj = [vacationOptions objectForKey: @"ignoreLists"];
-
-//   if (obj == nil)
-//     ignore = YES; // defaults to YES
-//   else
-//     ignore = [obj boolValue];
-
-//   return ignore;
-// }
-
-//
-// See http://sogo.nu/bugs/view.php?id=2332 for details
-//
-// - (void) setAlwaysSend: (BOOL) ignoreLists
-// {
-//   [vacationOptions setObject: [NSNumber numberWithBool: ignoreLists]
-// 		      forKey: @"alwaysSend"];
-// }
-
-// - (BOOL) alwaysSend
-// {
-//   NSNumber *obj;
-//   BOOL ignore;
-
-//   obj = [vacationOptions objectForKey: @"alwaysSend"];
-
-//   if (obj == nil)
-//     ignore = NO; // defaults to NO
-//   else
-//     ignore = [obj boolValue];
-
-//   return ignore;
-// }
-
-// - (BOOL) enableVacationEndDate
-// {
-//   return [[vacationOptions objectForKey: @"endDateEnabled"] boolValue];
-// }
-
-// - (BOOL) disableVacationEndDate
-// {
-//   return ![self enableVacationEndDate];
-// }
-
-// - (void) setEnableVacationEndDate: (BOOL) enableVacationEndDate
-// {
-//   [vacationOptions setObject: [NSNumber numberWithBool: enableVacationEndDate]
-//                       forKey: @"endDateEnabled"];
-// }
-
-// - (void) setVacationEndDate: (NSCalendarDate *) endDate
-// {
-//   NSNumber *time;
-
-//   time = [NSNumber numberWithInt: [endDate timeIntervalSince1970]];
-
-//   [vacationOptions setObject: time forKey: @"endDate"];
-// }
-
-// - (NSCalendarDate *) vacationEndDate
-// {
-//   int time;
-
-//   time = [[vacationOptions objectForKey: @"endDate"] intValue];
-
-//   if (time > 0)
-//     return [NSCalendarDate dateWithTimeIntervalSince1970: time];
-//   else
-//     return [NSCalendarDate calendarDate];
-// }
-
 /* mail forward */
 
 //
@@ -1405,49 +925,6 @@ static NSArray *reminderValues = nil;
   return [[user domainDefaults] forwardEnabled];
 }
 
-// - (void) setEnableForward: (BOOL) enableForward
-// {
-//   [forwardOptions setObject: [NSNumber numberWithBool: enableForward]
-// 		     forKey: @"enabled"];
-// }
-
-// - (BOOL) enableForward
-// {
-//   return [[forwardOptions objectForKey: @"enabled"] boolValue];
-// }
-
-// - (void) setForwardAddress: (NSString *) forwardAddress
-// {
-//   NSArray *addresses;
-
-//   addresses = [[forwardAddress componentsSeparatedByString: @","]
-//                 trimmedComponents];
-//   [forwardOptions setObject: addresses
-// 		     forKey: @"forwardAddress"];
-// }
-
-// - (NSString *) forwardAddress
-// {
-//   id addresses;
-
-//   addresses = [forwardOptions objectForKey: @"forwardAddress"];
-
-//   return ([addresses respondsToSelector: @selector(componentsJoinedByString:)]
-//           ? [(NSArray *)addresses componentsJoinedByString: @", "]
-//           : (NSString *)addresses);
-// }
-
-// - (void) setForwardKeepCopy: (BOOL) keepCopy
-// {
-//   [forwardOptions setObject: [NSNumber numberWithBool: keepCopy]
-// 		     forKey: @"keepCopy"];
-// }
-
-// - (BOOL) forwardKeepCopy
-// {
-//   return [[forwardOptions objectForKey: @"keepCopy"] boolValue];
-// }
-
 - (NSString *) forwardConstraints
 {
   SOGoDomainDefaults *dd;
@@ -1455,6 +932,18 @@ static NSArray *reminderValues = nil;
   dd = [[context activeUser] domainDefaults];
 
   return [NSString stringWithFormat: @"%d", [dd forwardConstraints]];
+}
+
+- (NSString *) forwardConstraintsDomains
+{
+  NSMutableArray *domains;
+  SOGoDomainDefaults *dd;
+
+  dd = [[context activeUser] domainDefaults];
+  domains = [NSMutableArray array];
+  [domains addObjectsFromArray: [dd forwardConstraintsDomains]];
+
+  return [domains jsonRepresentation];
 }
 
 //
@@ -1504,30 +993,6 @@ static NSArray *reminderValues = nil;
   return [self labelForKey: item];
 }
 
-
-// - (NSString *) userDefaultModule
-// {
-//   NSString *userDefaultModule;
-
-//   if ([userDefaults rememberLastModule])
-//     userDefaultModule = @"Last";
-//   else
-//     userDefaultModule = [userDefaults loginModule];
-
-//   return userDefaultModule;
-// }
-
-// - (void) setUserDefaultModule: (NSString *) newValue
-// {
-//   if ([newValue isEqualToString: @"Last"])
-//     [userDefaults setRememberLastModule: YES];
-//   else
-//     {
-//       [userDefaults setRememberLastModule: NO];
-//       [userDefaults setLoginModule: newValue];
-//     }
-// }
-
 //
 // Used by templates
 //
@@ -1535,6 +1000,20 @@ static NSArray *reminderValues = nil;
 {
   // The variable SOGoVersion comes from the import: SOGo/Build.h
   return [NSString stringWithString: SOGoVersion];
+}
+
+- (BOOL) isGoogleAuthenticatorEnabled
+{
+#if defined(MFA_CONFIG)
+  return YES;
+#else
+  return NO;
+#endif
+}
+
+- (NSString *) googleAuthenticatorKey
+{
+  return [[context activeUser] googleAuthenticatorKey];
 }
 
 //
@@ -1566,52 +1045,6 @@ static NSArray *reminderValues = nil;
           ? YES
           : NO);
 }
-
-// - (id <WOActionResults>) defaultAction
-// {
-//   id <WOActionResults> results;
-//   SOGoDomainDefaults *dd;
-//   SOGoMailAccount *account;
-//   SOGoMailAccounts *folder;
-//   WORequest *request;
-
-//   request = [context request];
-//   if ([[request method] isEqualToString: @"POST"])
-//     {
-//       dd = [[context activeUser] domainDefaults];
-//       if ([dd sieveScriptsEnabled])
-//         [userDefaults setSieveFilters: sieveFilters];
-//       if ([dd vacationEnabled])
-//         [userDefaults setVacationOptions: vacationOptions];
-//       if ([dd forwardEnabled])
-//         [userDefaults setForwardOptions: forwardOptions];
-
-//       if (!([dd sieveScriptsEnabled] || [dd vacationEnabled] || [dd forwardEnabled]) || [self _isSieveServerAvailable])
-//         {
-//           [userDefaults synchronize];
-//           folder = [[self clientObject] mailAccountsFolder: @"Mail"
-//                                                  inContext: context];
-//           account = [folder lookupName: @"0" inContext: context acquire: NO];
-
-//           if ([account updateFilters])
-//             // If Sieve is not enabled, the SOGoSieveManager will immediatly return a positive answer
-//             // See [SOGoSieveManager updateFiltersForAccount:withUsername:andPassword:]
-//             results = (id <WOActionResults>)[self responseWithStatus: 200
-//                          andJSONRepresentation: [NSDictionary dictionaryWithObjectsAndKeys: [NSNumber numberWithBool:hasChanged], @"hasChanged", nil]];
-
-//           else
-//             results = (id <WOActionResults>)[self responseWithStatus: 502
-//                          andJSONRepresentation: [NSDictionary dictionaryWithObjectsAndKeys: @"Connection error", @"textStatus", nil]];
-//         }
-//       else
-//         results = (id <WOActionResults>)[self responseWithStatus: 503
-//                      andJSONRepresentation: [NSDictionary dictionaryWithObjectsAndKeys: @"Service temporarily unavailable", @"textStatus", nil]];
-//     }
-//   else
-//     results = self;
-
-//   return results;
-// }
 
 - (BOOL) shouldTakeValuesFromRequest: (WORequest *) request
                            inContext: (WOContext*) context
@@ -1653,184 +1086,6 @@ static NSArray *reminderValues = nil;
            userCanChangePassword];
 }
 
-// - (NSString *) localeCode
-// {
-//   // WARNING : NSLocaleCode is not defined in <Foundation/NSUserDefaults.h>
-//   return [locale objectForKey: @"NSLocaleCode"];
-// }
-
-// - (NSArray *) _languageCalendarCategories
-// {
-//   NSArray *categoryLabels;
-
-//   categoryLabels = [[self labelForKey: @"calendar_category_labels"]
-//                        componentsSeparatedByString: @","];
-
-//   return [categoryLabels trimmedComponents];
-// }
-
-// - (NSArray *) calendarCategoryList
-// {
-//   if (!calendarCategories)
-//     {
-//       ASSIGN (calendarCategories, [userDefaults calendarCategories]);
-//       if (!calendarCategories)
-//         ASSIGN (calendarCategories, [self _languageCalendarCategories]);
-//     }
-
-//   return [calendarCategories
-//            sortedArrayUsingSelector: @selector (localizedCaseInsensitiveCompare:)];
-// }
-
-// - (SOGoMailLabel *) label
-// {
-//   return label;
-// }
-
-// - (void) setLabel: (SOGoMailLabel *) newLabel
-// {
-//   ASSIGN(label, newLabel);
-// }
-
-// - (NSArray *) mailLabelList
-// {
-//   if (!mailLabels)
-//     {
-//       NSDictionary *v;
-
-//       v = [[[context activeUser] userDefaults] mailLabelsColors];
-//       ASSIGN(mailLabels, [SOGoMailLabel labelsFromDefaults: v  component: self]);
-//     }
-
-//   return mailLabels;
-// }
-
-// - (NSString *) mailLabelsValue
-// {
-//   return @"";
-// }
-
-// - (void) setMailLabelsValue: (NSString *) value
-// {
-//   NSMutableDictionary *sanitizedLabels;
-//   NSDictionary *newLabels;
-//   NSArray *allKeys;
-//   NSString *name;
-//   int i;
-
-//   newLabels = [value objectFromJSONString];
-//   if (newLabels && [newLabels isKindOfClass: [NSDictionary class]])
-//     {
-//       // We encode correctly our keys
-//       sanitizedLabels = [NSMutableDictionary dictionary];
-//       allKeys = [newLabels allKeys];
-
-//       for (i = 0; i < [allKeys count]; i++)
-//         {
-//           name = [allKeys objectAtIndex: i];
-
-//           if (![name is7bitSafe])
-//             name = [name stringByEncodingImap4FolderName];
-
-//           name = [name lowercaseString];
-
-//           [sanitizedLabels setObject: [newLabels objectForKey: [allKeys objectAtIndex: i]]
-//                               forKey: name];
-//         }
-
-//       [userDefaults setMailLabelsColors: sanitizedLabels];
-//     }
-// }
-
-
-// - (void) setCategory: (NSString *) newCategory
-// {
-//   ASSIGN (category, newCategory);
-// }
-
-// - (NSString *) category
-// {
-//   return category;
-// }
-
-// - (NSString *) categoryColor
-// {
-//   SOGoDomainDefaults *dd;
-//   NSString *categoryColor;
-
-//   if (!calendarCategoriesColors)
-//     ASSIGN (calendarCategoriesColors, [userDefaults calendarCategoriesColors]);
-
-//   categoryColor = [calendarCategoriesColors objectForKey: category];
-//   if (!categoryColor)
-//     {
-//       if (!defaultCategoryColor)
-//         {
-//           dd = [[context activeUser] domainDefaults];
-//           ASSIGN (defaultCategoryColor, [dd calendarDefaultCategoryColor]);
-//         }
-//       categoryColor = defaultCategoryColor;
-//     }
-
-//   return categoryColor;
-// }
-
-// - (NSString *) calendarCategoriesValue
-// {
-//   return @"";
-// }
-
-// - (void) setCalendarCategoriesValue: (NSString *) value
-// {
-//   NSDictionary *newColors;
-
-//   newColors = [value objectFromJSONString];
-//   if (newColors && [newColors isKindOfClass: [NSDictionary class]])
-//     {
-//       [userDefaults setCalendarCategories: [newColors allKeys]];
-//       [userDefaults setCalendarCategoriesColors: newColors];
-//     }
-// }
-
-// - (NSArray *) _languageContactsCategories
-// {
-//   NSArray *categoryLabels;
-
-//   categoryLabels = [[self labelForKey: @"contacts_category_labels"]
-//                        componentsSeparatedByString: @","];
-//   if (!categoryLabels)
-//     categoryLabels = [NSArray array];
-
-//   return [categoryLabels trimmedComponents];
-// }
-
-// - (NSArray *) contactsCategoryList
-// {
-//   if (!contactsCategories)
-//     {
-//       ASSIGN (contactsCategories, [userDefaults contactsCategories]);
-//       if (!contactsCategories)
-//         ASSIGN (contactsCategories, [self _languageContactsCategories]);
-//     }
-
-//   return [contactsCategories
-//            sortedArrayUsingSelector: @selector (localizedCaseInsensitiveCompare:)];
-// }
-
-// - (NSString *) contactsCategoriesValue
-// {
-//   return @"";
-// }
-
-// - (void) setContactsCategoriesValue: (NSString *) value
-// {
-//   NSArray *newCategories;
-
-//   newCategories = [value objectFromJSONString];
-//   if (newCategories && [newCategories isKindOfClass: [NSArray class]])
-//     [userDefaults setContactsCategories: newCategories];
-// }
-
 //
 // Used by wox template
 //
@@ -1838,17 +1093,6 @@ static NSArray *reminderValues = nil;
 {
   return [[SOGoSystemDefaults sharedSystemDefaults] supportedLanguages];
 }
-
-// - (NSString *) language
-// {
-//   return [userDefaults language];
-// }
-
-// - (void) setLanguage: (NSString *) newLanguage
-// {
-//   if ([[self languages] containsObject: newLanguage])
-//     [userDefaults setLanguage: newLanguage];
-// }
 
 //
 // Used by wox template
@@ -1878,63 +1122,6 @@ static NSArray *reminderValues = nil;
 //
 // Used internally
 //
-- (void) _extractMainIdentity: (NSDictionary *) identity
-                 inDictionary: (NSMutableDictionary *) target
-
-{
-  /* We perform some validation here as we have no guaranty on the input
-     validity. */
-  NSString *value;
-
-  if ([identity isKindOfClass: [NSDictionary class]])
-    {
-      value = [identity objectForKey: @"signature"];
-
-      if (value)
-        [target setObject: value  forKey: @"SOGoMailSignature"];
-      else
-        [target removeObjectForKey: @"SOGoMailSignature"];
-
-      if (mailCustomFromEnabled)
-        {
-          value = [[identity objectForKey: @"email"]
-                    stringByTrimmingSpaces];
-
-          /* We make sure that the "custom" value is different from the system email */
-          if ([value length] == 0
-              || [[user systemEmail] isEqualToString: value])
-            value = nil;
-
-          if (value)
-            [target setObject: value  forKey: @"SOGoMailCustomEmail"];
-          else
-            [target removeObjectForKey: @"SOGoMailCustomEmail"];
-
-          value = [[identity objectForKey: @"fullName"]
-                    stringByTrimmingSpaces];
-          if ([value length] == 0
-              || [[user cn] isEqualToString: value])
-            value = nil;
-
-          if (value)
-            [target setObject: value  forKey: @"SOGoMailCustomFullName"];
-          else
-            [target removeObjectForKey: @"SOGoMailCustomFullName"];
-        }
-
-      value = [[identity objectForKey: @"replyTo"]
-                stringByTrimmingSpaces];
-
-      if (value && [value length] > 0)
-        [target setObject: value  forKey: @"SOGoMailReplyTo"];
-      else
-        [target removeObjectForKey: @"SOGoMailReplyTo"];
-    }
-}
-
-//
-// Used internally
-//
 - (BOOL) _validateReceiptAction: (NSString *) action
 {
   return ([action isKindOfClass: [NSString class]]
@@ -1956,8 +1143,8 @@ static NSArray *reminderValues = nil;
 
   if ([receipts isKindOfClass: [NSDictionary class]])
     {
-      action = [receipts objectForKey: @"receiptAction"];
-      [target setObject: @"1" forKey: @"SOGoMailReceiptAllow"];
+      action = [[receipts objectForKey: @"receiptAction"] isEqualToString: @"ignore"] ? @"0" : @"1";
+      [target setObject: action forKey: @"SOGoMailReceiptAllow"];
 
       action = [receipts objectForKey: @"receiptNonRecipientAction"];
       if ([self _validateReceiptAction: action])
@@ -1997,20 +1184,6 @@ static NSArray *reminderValues = nil;
 //
 // Used internally
 //
-- (void) _extractMainCustomFrom: (NSDictionary *) account
-{
-}
-
-//
-// Used internally
-//
-- (void) _extractMainReplyTo: (NSDictionary *) account
-{
-}
-
-//
-// Used internally
-//
 - (BOOL) _validateAccountIdentities: (NSArray *) identities
 {
   static NSString *identityKeys[] = { @"fullName", @"email", nil };
@@ -2024,7 +1197,7 @@ static NSArray *reminderValues = nil;
   if (!knownKeys)
     {
       knownKeys = [NSArray arrayWithObjects: @"fullName", @"email",
-                           @"signature", @"replyTo", nil];
+                           @"signature", @"replyTo", @"isDefault", nil];
       [knownKeys retain];
     }
 
@@ -2078,9 +1251,9 @@ static NSArray *reminderValues = nil;
 
   if (!knownKeys)
     {
-      knownKeys = [NSArray arrayWithObjects: @"name", @"serverName", @"port",
+      knownKeys = [NSArray arrayWithObjects: @"id", @"name", @"serverName", @"port",
                            @"userName", @"password", @"encryption", @"replyTo",
-                           @"identities", @"mailboxes",
+                           @"identities", @"mailboxes", @"forceDefaultIdentity",
                            @"receipts", @"security", @"isNew",
                            nil];
       [knownKeys retain];
@@ -2132,9 +1305,12 @@ static NSArray *reminderValues = nil;
   if ([account isKindOfClass: [NSDictionary class]])
     {
       identities = [account objectForKey: @"identities"];
-      if ([identities isKindOfClass: [NSArray class]]
-          && [identities count] > 0)
-        [self _extractMainIdentity: [identities objectAtIndex: 0]  inDictionary: target];
+      if ([self _validateAccountIdentities: identities])
+        [target setObject: identities forKey: @"SOGoMailIdentities"];
+      if ([[account objectForKey: @"forceDefaultIdentity"] boolValue])
+        [target setObject: [NSNumber numberWithBool: YES] forKey: @"SOGoMailForceDefaultIdentity"];
+      else if ([target objectForKey: @"SOGoMailforceDefaultIdentity"])
+        [target removeObjectForKey: @"SOGoMailforceDefaultIdentity"];
       [self _extractMainReceiptsPreferences: [account objectForKey: @"receipts"]  inDictionary: target];
       [self _extractMainSecurityPreferences: [account objectForKey: @"security"]  inDictionary: target];
     }
@@ -2219,41 +1395,6 @@ static NSArray *reminderValues = nil;
         }
     }
 }
-
-// - (void) setMailAccounts: (NSString *) newMailAccounts
-// {
-//   NSArray *accounts;
-//   int max;
-
-//   accounts = [newMailAccounts objectFromJSONString];
-//   if (accounts && [accounts isKindOfClass: [NSArray class]])
-//     {
-//       max = [accounts count];
-//       if (max > 0)
-//         {
-//           [self _extractMainAccountSettings: [accounts objectAtIndex: 0]];
-//           if ([self mailAuxiliaryUserAccountsEnabled])
-//             [self _extractAuxiliaryAccounts: accounts];
-//         }
-//     }
-// }
-
-// - (NSString *) mailAccounts
-// {
-//   NSArray *accounts;
-//   NSMutableDictionary *account;
-//   int count, max;
-
-//   accounts = [user mailAccounts];
-//   max = [accounts count];
-//   for (count = 0; count < max; count++)
-//     {
-//       account = [accounts objectAtIndex: count];
-//       [account removeObjectForKey: @"password"];
-//     }
-
-//   return [accounts jsonRepresentation];
-// }
 
 - (NSString *) mailCustomFromEnabled
 {
@@ -2367,7 +1508,7 @@ static NSArray *reminderValues = nil;
         [v setObject: [[user userDefaults] mailCertificate]  forKey: @"SOGoMailCertificate"];
 
       //
-      // We sanitize our auxilary mail accounts
+      // We sanitize our auxiliary mail accounts
       //
       accounts = [v objectForKey: @"AuxiliaryMailAccounts"];
       if (accounts && [accounts isKindOfClass: [NSArray class]])
@@ -2375,10 +1516,7 @@ static NSArray *reminderValues = nil;
           if ([accounts count] > 0)
             {
               // The first account is the main system account. The following mapping is required:
-              // - identities[0].signature             => SOGoMailSignature
-              // - identities[0].email                 => SOGoMailCustomEmail
-              // - identities[0].fullName              => SOGoMailCustomFullName
-              // - identities[0].replyTo               => SOGoMailReplyTo
+              // - forceDefaultIdentity                => SOGoMailForceDefaultIdentity
               // - receipts.receiptAction              => SOGoMailReceiptAllow
               // - receipts.receiptNonRecipientAction  => SOGoMailReceiptNonRecipientAction
               // - receipts.receiptOutsideDomainAction => SOGoMailReceiptOutsideDomainAction
@@ -2399,6 +1537,7 @@ static NSArray *reminderValues = nil;
 
       if ([[user userDefaults] synchronize])
         {
+          NSException *error;
           SOGoMailAccount *account;
           SOGoMailAccounts *folder;
           SOGoDomainDefaults *dd;
@@ -2408,15 +1547,16 @@ static NSArray *reminderValues = nil;
           // We check if the Sieve server is available *ONLY* if at least one of the option is enabled
           if (!([dd sieveScriptsEnabled] || [dd vacationEnabled] || [dd forwardEnabled]) || [self _isSieveServerAvailable])
             {
+              BOOL forceActivation = ![[v objectForKey: @"hasActiveExternalSieveScripts"] boolValue];
 
               folder = [[[context activeUser] homeFolderInContext: context]  mailAccountsFolder: @"Mail"
                                                                                       inContext: context];
               account = [folder lookupName: @"0" inContext: context acquire: NO];
 
-              if (![account updateFilters])
+              if ((error = [account updateFiltersAndForceActivation: forceActivation]))
                 {
-                  results = (id <WOActionResults>) [self responseWithStatus: 502
-                           andJSONRepresentation: [NSDictionary dictionaryWithObjectsAndKeys: @"Connection error", @"message", nil]];
+                  results = (id <WOActionResults>) [self responseWithStatus: 500
+                                                      andJSONRepresentation: [NSDictionary dictionaryWithObjectsAndKeys: [error reason], @"message", nil]];
                 }
             }
           else

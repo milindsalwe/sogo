@@ -139,7 +139,7 @@
             <!-- SEND REJECT MESSAGE -->
             <md-input-container class="md-block" flex="50" ng-if="action.method == 'reject'">
               <label><var:string label:value="Message"/></label>
-              <input type="text" ng-model="action.argument" required="required"/>
+              <textarea ng-model="action.argument" required="required"></textarea>
             </md-input-container>
 
             <!-- FILE INTO -->
@@ -188,6 +188,10 @@
           </div>
         </div>
       </div>
+    </md-dialog-content>
+    <md-dialog-content class="md-default-theme md-bg md-warn md-padding sg-dialog-message ng-hide"
+                       ng-show="filterEditor.invalid">
+      <div>{{filterEditor.invalid}}</div>
     </md-dialog-content>
     <md-dialog-actions>
       <md-button type="button" ng-click="filterEditor.cancel()"><var:string label:value="Cancel"/></md-button>

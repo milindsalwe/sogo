@@ -12,28 +12,28 @@
 
     this.$onInit = function() {
       $scope.isPopup = stateParent.isPopup;
-      vm.addRecipient = addRecipient;
-      vm.autocomplete = {to: {}, cc: {}, bcc: {}};
-      vm.autosave = null;
-      vm.autosaveDrafts = autosaveDrafts;
-      vm.cancel = cancel;
-      vm.contactFilter = contactFilter;
-      vm.isFullscreen = false;
-      vm.hideBcc = (stateMessage.editable.bcc.length === 0);
-      vm.hideCc = (stateMessage.editable.cc.length === 0);
-      vm.identities = _.uniq(_.map(stateAccount.identities, 'full'));
-      vm.message = stateMessage;
-      vm.recipientSeparatorKeys = [
+      this.account = stateAccount;
+      this.autocomplete = {to: {}, cc: {}, bcc: {}};
+      this.autosave = null;
+      this.autosaveDrafts = autosaveDrafts;
+      this.cancel = cancel;
+      this.contactFilter = contactFilter;
+      this.isFullscreen = false;
+      this.hideBcc = (stateMessage.editable.bcc.length === 0);
+      this.hideCc = (stateMessage.editable.cc.length === 0);
+      this.identities = stateAccount.identities;
+      this.fromIdentity = stateMessage.editable.from;
+      this.identitySearchText = '';
+      this.message = stateMessage;
+      this.recipientSeparatorKeys = [
         $mdConstant.KEY_CODE.ENTER,
         $mdConstant.KEY_CODE.TAB,
         $mdConstant.KEY_CODE.COMMA,
         $mdConstant.KEY_CODE.SEMICOLON
       ];
-      vm.removeAttachment = removeAttachment;
-      vm.save = save;
-      vm.send = send;
-      vm.sendState = false;
-      vm.toggleFullscreen = toggleFullscreen;
+      this.removeAttachment = removeAttachment;
+      this.sendState = false;
+      this.toggleFullscreen = toggleFullscreen;
       this.firstFocus = true;
 
       _initFileUploader();
@@ -41,10 +41,15 @@
       // Read user's defaults
       if (Preferences.defaults.SOGoMailAutoSave)
         // Enable auto-save of draft
-        vm.autosave = $timeout(vm.autosaveDrafts, Preferences.defaults.SOGoMailAutoSave*1000*60);
-      // Set the locale of CKEditor
-      vm.localeCode = Preferences.defaults.LocaleCode;
+        this.autosave = $timeout(this.autosaveDrafts, Preferences.defaults.SOGoMailAutoSave*1000*60);
 
+      // Set the locale of CKEditor
+      this.localeCode = Preferences.defaults.LocaleCode;
+      this.ckConfig = { language: Preferences.defaults.LocaleCode };
+
+      this.composeType = Preferences.defaults.SOGoMailComposeMessageType;
+
+      this.signaturePlacement = Preferences.defaults.SOGoMailSignaturePlacement;
       this.replyPlacement = Preferences.defaults.SOGoMailReplyPlacement;
       if (this.message.origin && this.message.origin.action == 'forward') {
         // For forwards, place caret at top unconditionally
@@ -57,6 +62,7 @@
       if ($stateParams.actionName == 'reply') {
         stateMessage.$reply().then(function(msgObject) {
           vm.message = msgObject;
+          vm.fromIdentity = msgObject.editable.from;
           vm.hideCc = (!msgObject.editable.cc || msgObject.editable.cc.length === 0);
           vm.hideBcc = (!msgObject.editable.bcc || msgObject.editable.bcc.length === 0);
           _updateFileUploader();
@@ -65,6 +71,7 @@
       else if ($stateParams.actionName == 'replyall') {
         stateMessage.$replyAll().then(function(msgObject) {
           vm.message = msgObject;
+          vm.fromIdentity = msgObject.editable.from;
           vm.hideCc = (!msgObject.editable.cc || msgObject.editable.cc.length === 0);
           vm.hideBcc = (!msgObject.editable.bcc || msgObject.editable.bcc.length === 0);
           _updateFileUploader();
@@ -73,12 +80,13 @@
       else if ($stateParams.actionName == 'forward') {
         stateMessage.$forward().then(function(msgObject) {
           vm.message = msgObject;
+          vm.fromIdentity = msgObject.editable.from;
           _updateFileUploader();
           _addAttachments();
         });
       }
       else if (angular.isDefined(stateMessage)) {
-        vm.message = stateMessage;
+        this.message = stateMessage;
         _updateFileUploader();
         _addAttachments();
       }
@@ -128,8 +136,9 @@
         // },
         onSuccessItem: function(item, response, status, headers) {
           vm.message.$setUID(response.uid);
-          vm.message.$reload({asDraft: false});
+          vm.message.$reload();
           item.inlineUrl = response.lastAttachmentAttrs[0].url;
+          item.file.name = response.lastAttachmentAttrs[0].filename;
           //console.debug(item); console.debug('success = ' + JSON.stringify(response, undefined, 2));
         },
         onCancelItem: function(item, response, status, headers) {
@@ -141,7 +150,7 @@
         onErrorItem: function(item, response, status, headers) {
           $mdToast.show(
             $mdToast.simple()
-              .content(l('Error while uploading the file \"%{0}\":', item.file.name) +
+              .textContent(l('Error while uploading the file \"%{0}\":', item.file.name) +
                        ' ' + (response.message? l(response.message) : ''))
               .position('top right')
               .action(l('OK'))
@@ -199,9 +208,9 @@
       $mdDialog.cancel();
     }
 
-    function save() {
+    this.save = function () {
       var ctrls = $parentControllers();
-      vm.message.$save().then(function(data) {
+      this.message.$save().then(function(data) {
         vm.message.$rawSource = null;
         if (ctrls.draftMailboxCtrl) {
           // We're saving a draft from a popup window.
@@ -215,18 +224,18 @@
         }
         $mdToast.show(
           $mdToast.simple()
-            .content(l('Your email has been saved'))
+            .textContent(l('Your email has been saved'))
             .position('top right')
             .hideDelay(3000));
       });
-    }
+    };
 
-    function send() {
-      vm.sendState = 'sending';
-      if (vm.autosave)
-        $timeout.cancel(vm.autosave);
+    this.send = function () {
+      this.sendState = 'sending';
+      if (this.autosave)
+        $timeout.cancel(this.autosave);
 
-      vm.message.$send().then(function(data) {
+      this.message.$send().then(function(data) {
         var ctrls = $parentControllers();
         vm.sendState = 'sent';
         if (ctrls.draftMailboxCtrl) {
@@ -246,7 +255,7 @@
         }
         $mdToast.show(
           $mdToast.simple()
-            .content(l('Your email has been sent'))
+            .textContent(l('Your email has been sent'))
             .position('top right')
             .hideDelay(3000));
 
@@ -258,7 +267,7 @@
           vm.errorMessage = response.data? response.data.message : response.statusText;
         });
       });
-    }
+    };
 
     function toggleFullscreen() {
       vm.isFullscreen = !vm.isFullscreen;
@@ -281,11 +290,11 @@
       });
     }
 
-    function addRecipient(contact, field) {
+    this.addRecipient = function (contact, field) {
       var recipients, recipient, list, i, address;
       var emailRE = /([\w\!\#$\%\&\'\*\+\-\/\=\?\^\`{\|\}\~]+\.)*[\w\!\#$\%\&\'\*\+\-\/\=\?\^\`{\|\}\~]+@((((([a-z0-9]{1}[a-z0-9\-]{0,62}[a-z0-9]{1})|[a-z])\.)+[a-z]{2,})|(\d{1,3}\.){3}\d{1,3}(\:\d{1,5})?)/i;
 
-      recipients = vm.message.editable[field];
+      recipients = this.message.editable[field];
 
       if (angular.isString(contact)) {
         // Examples that are handled:
@@ -331,6 +340,16 @@
           });
         }
       }
+      else if (contact.$isGroup({expandable: true})) {
+        recipient = {
+          toString: function () { return contact.$shortFormat(); },
+          isExpandable: true,
+          members: []
+        };
+        contact.$members().then(function (members) {
+          recipient.members = members;
+        });
+      }
       else {
         recipient = contact.$shortFormat();
       }
@@ -339,7 +358,79 @@
         return recipient;
       else
         return null;
-    }
+    };
+
+    this.setFromIdentity = function (identity) {
+      var node, children, nl, reNl, space, signature, previousIdentity;
+
+      if (identity && identity.full)
+        this.message.editable.from = identity.full;
+      else if (identity && identity.length)
+        return;
+
+      if (this.composeType == "html") {
+        nl = '<br />';
+        reNl = '<br ?/>[ \n]?';
+        space = '&nbsp;';
+      } else {
+        nl = '\n';
+        reNl = '\n';
+        space = ' ';
+      }
+
+      if (identity && identity.signature)
+        signature = nl + nl + '--' + space + nl + identity.signature;
+      else
+        signature = '';
+
+      previousIdentity = _.find(this.identities, function (currentIdentity, index) {
+        if (currentIdentity.signature) {
+          var currentSignature = new RegExp(reNl + reNl + '--' + space + reNl +
+                                            currentIdentity.signature.replace(/[-\[\]{}()*+?.,\\^$|#\s]/g, '\\$&'));
+          if (vm.message.editable.text.search(currentSignature) >= 0) {
+            vm.message.editable.text = vm.message.editable.text.replace(currentSignature, signature);
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (!previousIdentity && signature.length > 0) {
+        // Must place signature at proper place
+        if (!this.isNew() && this.signaturePlacement == 'above') {
+          var quotedMessageIndex = this.message.editable.text.search(new RegExp(reNl + '.+?:( ?' + reNl + '){2}(> |<blockquote type="cite")'));
+          if (quotedMessageIndex >= 0) {
+            this.message.editable.text =
+              this.message.editable.text.slice(0, quotedMessageIndex) +
+              signature +
+              this.message.editable.text.slice(quotedMessageIndex);
+          } else {
+            this.message.editable.text = signature + this.message.editable.text;
+          }
+        } else {
+          this.message.editable.text += signature;
+        }
+      }
+    };
+
+    this.identitySearch = function (query) {
+      var q = query ? query : '';
+      return _.filter(stateAccount.identities, function(identity) {
+        return identity.full.toLowerCase().indexOf(q.toLowerCase()) >= 0;
+      });
+    };
+
+    this.expandGroup = function(contact, field) {
+      var recipients, i, j;
+      recipients = this.message.editable[field];
+      i = recipients.indexOf(contact);
+      recipients.splice(i, 1);
+      for (j = 0; j < contact.members.length; j++) {
+        var recipient = contact.members[j].$shortFormat();
+        if (recipients.indexOf(recipient) < 0)
+          recipients.splice(i + j, 0, contact.members[j].$shortFormat());
+      }
+    };
 
     // Drafts autosaving
     function autosaveDrafts() {
@@ -367,8 +458,7 @@
       if (this.firstFocus) {
         onCompletePromise().then(function(element) {
           var textContent = angular.element(textArea).val(),
-              hasSignature = (Preferences.defaults.SOGoMailSignature &&
-                              Preferences.defaults.SOGoMailSignature.length > 0),
+              hasSignature = /\n-- \n/.test(textContent),
               signatureLength = 0,
               sigLimit,
               caretPosition;
@@ -378,8 +468,9 @@
             element.find('md-dialog-content')[0].scrollTop = 0;
           }
           else {
+            // Search for signature starting from bottom
             if (hasSignature) {
-              sigLimit = textContent.lastIndexOf("--");
+              sigLimit = textContent.lastIndexOf("-- ");
               if (sigLimit > -1)
                 signatureLength = (textContent.length - sigLimit);
             }
@@ -395,14 +486,21 @@
       }
     };
 
-    this.onHTMLFocus = function ($event) {
-      var caretAtTop = (this.replyPlacement == 'above');
+    this.onHTMLReady = function ($editor) {
+      if (!this.isNew()) {
+        onCompletePromise().then(function() {
+          $editor.focus();
+        });
+      }
+    };
 
+    this.onHTMLFocus = function (editor) {
       if (this.firstFocus) {
         onCompletePromise().then(function(element) {
-          var selected = $event.editor.getSelection(),
+          var caretAtTop = (vm.replyPlacement == 'above'),
+              selected = editor.getSelection(),
               selected_ranges = selected.getRanges(),
-              children = $event.editor.document.getBody().getChildren(),
+              children = editor.document.getBody().getChildren(),
               node;
 
           if (caretAtTop) {
@@ -416,7 +514,7 @@
               if (x === null) {
                 break;
               }
-              if (x.getText() == '--') {
+              if (/--(%20|%A0|%C2%A0)/.test(encodeURI(x.getText()))) {
                 node = x.getPrevious().getPrevious();
                 break;
               }

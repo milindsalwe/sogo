@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2007-2018 Inverse inc.
+  Copyright (C) 2007-2020 Inverse inc.
 
   This file is part of SOGo
 
@@ -63,7 +63,6 @@
                                 fromRequest: (WORequest *) rq;
 
 - (BOOL) resourceHasAutoAccepted;
-
 @end
 
 #endif /* __Appointments_SOGoAppointmentObject_H__ */

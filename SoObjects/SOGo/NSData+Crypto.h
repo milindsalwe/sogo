@@ -1,7 +1,7 @@
 /* NSData+Crypto.h - this file is part of SOGo
  *
  * Copyright (C) 2012 Nicolas Höft
- * Copyright (C) 2012-2016 Inverse inc.
+ * Copyright (C) 2012-2020 Inverse inc.
  *
  * Author: Nicolas Höft
  *         Inverse inc.
@@ -32,7 +32,12 @@
 @interface NSData (SOGoCryptoExtension)
 
 - (NSData *) asCryptedPassUsingScheme: (NSString *) passwordScheme
-                             withSalt: (NSData *) theSalt;
+                             withSalt: (NSData *) theSalt
+                              keyPath: (NSString *) theKeyPath;
+
+- (BOOL) verifyUsingScheme: (NSString *) passwordScheme
+                withPassword: (NSData *) thePassword
+                     keyPath: (NSString *) theKeyPath;
 
 - (NSData *) asLM;
 - (NSData *) asMD4;
@@ -46,19 +51,26 @@
 - (NSData *) asSSHA512UsingSalt: (NSData *) theSalt;
 - (NSData *) asSHA256CryptUsingSalt: (NSData *) theSalt;
 - (NSData *) asSHA512CryptUsingSalt: (NSData *) theSalt;
+- (NSData *) asSymAES128CBCUsingIV: (NSString *) theIV
+                           keyPath: (NSString *) theKeyPath;
 - (NSData *) asCramMD5;
-
+- (NSData *) asPBKDF2SHA1UsingSalt: (NSData *) theSalt;
 - (NSData *) asCryptUsingSalt: (NSData *) theSalt;
 - (NSData *) asMD5CryptUsingSalt: (NSData *) theSalt;
+- (NSData *) asBlowfishCryptUsingSalt: (NSData *) theSalt;
+#ifdef HAVE_SODIUM
+- (NSData *) asArgon2iUsingSalt: (NSData *) theSalt;
+- (NSData *) asArgon2idUsingSalt: (NSData *) theSalt;
+#endif /* HAVE_SODIUM */
 
 - (NSData *) extractSalt: (NSString *) theScheme;
 
 + (NSData *) generateSaltForLength: (unsigned int) theLength
-                        withBase64: (BOOL) doBase64;
+                        withPrintable: (BOOL) doPrintable;
 + (NSData *) generateSaltForLength: (unsigned int) theLength;
 
-+ (NSString *) encodeDataAsHexString: (NSData* ) theData;
-+ (NSData *) decodeDataFromHexString: (NSString* ) theString;
++ (NSString *) encodeDataAsHexString: (NSData *) theData;
++ (NSData *) decodeDataFromHexString: (NSString *) theString;
 
 @end
 

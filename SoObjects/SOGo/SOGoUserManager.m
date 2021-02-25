@@ -584,7 +584,7 @@ static Class NSNullK;
       block_time = [sd failedLoginBlockInterval];
 
       if ([[failedCount objectForKey: @"FailedCount"] intValue] >= [sd maximumFailedLoginCount] &&
-          delta_last_request >= [sd maximumFailedLoginInterval] &&
+          delta_last_request < [sd maximumFailedLoginInterval] &&
           delta_start <= block_time )
         {
           *_perr = PolicyAccountLocked;
@@ -683,7 +683,9 @@ static Class NSNullK;
 
   // We MUST, for all LDAP sources, update the bindDN and bindPassword
   // to the user's value if bindAsCurrentUser is set to true in the
-  // LDAP source configuration
+  // LDAP source configuration.
+  //
+  // We also update the baseDN of all sources.
   if (checkOK)
     {
       NSObject <SOGoDNSource> *currentSource;
@@ -697,6 +699,7 @@ static Class NSNullK;
           {
             [currentSource setBindDN: [currentSource lookupDNByLogin: _login]];
             [currentSource setBindPassword: _pwd];
+            [currentSource updateBaseDNFromLogin: _login];
           }
     }
 
@@ -833,6 +836,10 @@ static Class NSNullK;
   while (!userEntry && (sourceID = [sogoSources nextObject]))
     {
       currentSource = [_sources objectForKey: sourceID];
+
+      // We update the placeholder in the LDAP source if needed
+      if ([currentSource conformsToProtocol: @protocol(SOGoDNSource)])
+        [(id<SOGoDNSource>) currentSource updateBaseDNFromLogin: theUID];
 
       // Use the provided domain during the lookup. If none is defined, use the source's one
       // so if there's a match based on the source's domain, the user ID will be associated
@@ -1075,7 +1082,7 @@ static Class NSNullK;
 
                   [self _retainUser: currentUser  withLogin: cacheUid];
                 }
-            }
+            } // if (newUser)
         }
     }
   else

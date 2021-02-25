@@ -9,6 +9,15 @@
   md-list-item._md-button-wrap > div.md-button:first-child {
     padding-right: 0;
   }
+
+  .sg-tile-subject {
+    flex-grow: 1;
+  }
+
+  .sg-message-thread > .md-button:before {
+    content: '';
+    width: $mg;
+  }
 }
 
 // Container for the linear progress bar of the quota
@@ -19,6 +28,10 @@
   md-progress-linear > .md-container {
     height: 2px;
   }
+}
+
+.sg-icon-star {
+  color: $colorYellow700;
 }
 
 // Message view header
@@ -61,6 +74,9 @@
     padding-left: $mg;
     padding-right: $mg;
   }
+  md-chip {
+    cursor: pointer;
+  }
 }
 
 // Vertical buttons in header area of mail composer dialog
@@ -80,16 +96,30 @@
 }
 
 md-sidenav {
+  md-list-item.sg-mailbox-list-item {
+    // Lower by half the left padding of list items to accomodate the expand/collapse button
+    padding-left: $bl;
+    .sg-item-name {
+      transform: translateX(-$bl);
+      margin-right: 0;
+      md-icon {
+        margin-right: $bl;
+      }
+      &:focus {
+        outline: none;
+      }
+    }
+  }
   md-checkbox {
     &.sg-folder {
-      // Show checkbox as a "closed" folder when unchecked and "opened" folder when checked
+      // Show checkbox as a collapsed/right arrow when unchecked and expanded/down arrow when checked
       .md-container:after {
         color: rgba(0,0,0,0.54);
         font-family: 'Material Icons';
         font-size: 24px;
-        content: "\e2c7"; // folder
-        top: -4px;
-        left: 0px;
+        content: "\e5df"; // arrow_right (collapsed folder)
+        top: 0;
+        left: 0;
         width: 1em;
         height: 1em;
       }
@@ -98,7 +128,7 @@ md-sidenav {
       }
       &.md-checked {
         .md-container:after {
-          content: "\e2c8"; // folder open
+          content: "\e5c5"; // arrow_drop_down (expanded folder)
         }
         .md-icon {
           background-color: initial !important;
@@ -107,11 +137,7 @@ md-sidenav {
           }
         }
       }
-      // Hide the label (which contains an icon) if the checkbox is enabled ..
-      .md-label {
-        display: none;
-      }
-      // .. but show the label and hide the checkbox when disabled (no children)
+      // Hide the checkbox when disabled (no children)
       &[disabled] {
         .md-container {
           width: 0;
@@ -119,16 +145,7 @@ md-sidenav {
             content: '';
           }
         }
-        .md-label {
-          display: inline-block;
-          margin-left: 0;
-        }
       }
-    }
-  }
-  .sg-item-name {
-    &:focus {
-      outline: none;
     }
   }
 }
@@ -160,6 +177,25 @@ md-sidenav {
     }
     @include from(md) {
       flex: 0 0 33%;
+    }
+  }
+}
+
+// Limit height of attachments card, format content-type labels
+.msg-attachment-link,
+.msg-attachment-image {
+  md-card-content {
+    padding: $baseline-grid;
+    p {
+      @extend .md-caption;
+      line-height: $sg-line-height-2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      .sg-label-outline {
+        border-color: $colorGrey400;
+        color: $colorGrey600;
+      }
     }
   }
 }
@@ -206,9 +242,11 @@ md-sidenav {
   }
 }
 
+// Text or html message body
 .msg-attachment-other {
   flex: 0 0 100%;
   max-width: 100%;
+  word-break: break-word;
 }
 
 .sg-attachment-name {
@@ -230,35 +268,25 @@ md-sidenav {
   font-weight: $sg-font-regular;
 }
 
-.mailer_mailcontent {
-  md-card {
-    md-card-content {
-      padding: $baseline-grid;
-      p {
-        @extend .md-caption;
-        line-height: $sg-line-height-2;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        .sg-label-outline {
-          border-color: $colorGrey400;
-          color: $colorGrey600;
-        }
-      }
-    }
-  }
+.mailer_plaincontent {
+  white-space: pre-wrap;
 }
 
-// Force wrapping of pre elements in HTML content
-.mailer_htmlcontent pre {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  tab-size: 4;
+.mailer_htmlcontent {
+  // Constrain absolute-positioned child elements to this element
+  position: relative;
+
+  // Force wrapping of pre elements in HTML content
+  pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    tab-size: 4;
+  }
 }
 
 .sg-mail-editor {
   .pseudo-input-container {
-    max-height: 400px;
+    max-height: $baseline-grid * 4 * 6; // about 6 lines
     overflow: hidden;
     overflow-y: auto;
     padding-bottom: 2px; // leave some space for the border
@@ -277,14 +305,23 @@ md-sidenav {
 
 // Message body container of mail composer dialog
 .sg-mail-editor-content {
+  margin-top: 0;
   margin-bottom: 0;
   .cke_chrome {
-    border-bottom: 0;
+    border-color: transparent;
+  }
+  .cke_top {
+    top: 0;
+    position: sticky;
+  }
+  // Fix margin of toolbar collapser button
+  a.cke_toolbox_collapser {
+    margin: 4px 2px;
   }
 }
 
 // Attachments list in bottom actions section of mail composer dialog
-md-dialog .md-actions.sg-mail-editor-attachments {
+md-dialog md-dialog-actions.sg-mail-editor-attachments {
   border-top: 1px solid $colorGrayLighter;
   overflow: auto;
   max-height: 2 * $pitch; // = 128px (3 rows of chips)
@@ -302,7 +339,7 @@ md-dialog .md-actions.sg-mail-editor-attachments {
     position: absolute;
     right: 0;
   }
-  .md-icon-button {
+  .msg-header-buttons .md-icon-button {
     // Attachment button (file upload label)
     // Lower margins to fit the md-actions max height (52px)
     margin-bottom: $baseline-grid/2;

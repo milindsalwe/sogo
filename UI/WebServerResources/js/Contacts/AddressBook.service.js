@@ -45,6 +45,9 @@
       $Preferences: Preferences,
       $query: {value: '', sort: 'c_cn', asc: 1},
       activeUser: Settings.activeUser(),
+      $addressbooks: [],
+      $subscriptions: [],
+      $remotes: [],
       selectedFolder: null,
       $refreshTimeout: null
     });
@@ -82,17 +85,17 @@
    * @param {object[]} excludedCards - a list of Card objects that must be excluded from the results
    * @returns a collection of Cards instances
    */
-  AddressBook.$filterAll = function(search, options, excludedCards) {
+  AddressBook.$filterAll = function(search, cards, options, excludedCards) {
     var params = { search: search };
 
     if (!search) {
       // No query specified
-      AddressBook.$cards = [];
-      return AddressBook.$q.when(AddressBook.$cards);
+      cards = [];
+      return AddressBook.$q.when(cards);
     }
-    if (angular.isUndefined(AddressBook.$cards)) {
+    if (angular.isUndefined(cards)) {
       // First session query
-      AddressBook.$cards = [];
+      cards = [];
     }
 
     angular.extend(params, options);
@@ -112,23 +115,23 @@
         results = response.contacts;
       }
       // Remove cards that no longer match the search query
-      for (index = AddressBook.$cards.length - 1; index >= 0; index--) {
-        card = AddressBook.$cards[index];
+      for (index = cards.length - 1; index >= 0; index--) {
+        card = cards[index];
         if (_.isUndefined(_.find(results, _.bind(compareIds, card)))) {
-          AddressBook.$cards.splice(index, 1);
+          cards.splice(index, 1);
         }
       }
       // Add new cards matching the search query
       _.forEach(results, function(data, index) {
-        if (_.isUndefined(_.find(AddressBook.$cards, _.bind(compareIds, data)))) {
+        if (_.isUndefined(_.find(cards, _.bind(compareIds, data)))) {
           var card = new AddressBook.$Card(_.mapKeys(data, function(value, key) {
             return key.toLowerCase();
           }), search);
-          AddressBook.$cards.splice(index, 0, card);
+          cards.splice(index, 0, card);
         }
       });
-      AddressBook.$log.debug(AddressBook.$cards);
-      return AddressBook.$cards;
+      AddressBook.$log.debug(cards);
+      return cards;
     });
   };
 
@@ -159,10 +162,10 @@
    */
   AddressBook.$findAll = function(data) {
     var _this = this;
-    if (data) {
-      this.$addressbooks = [];
-      this.$subscriptions = [];
-      this.$remotes = [];
+    if (data && data.length) {
+      this.$addressbooks.splice(0, this.$addressbooks.length);
+      this.$subscriptions.splice(0, this.$subscriptions.length);
+      this.$remotes.splice(0, this.$remotes.length);
       // Instanciate AddressBook objects
       angular.forEach(data, function(o, i) {
         var addressbook = new AddressBook(o);
@@ -174,6 +177,12 @@
           _this.$addressbooks.push(addressbook);
       });
     }
+    else if (angular.isArray(data)) { // empty array
+      return AddressBook.$$resource.fetch('addressbooksList').then(function(data) {
+        return AddressBook.$findAll(data.addressbooks);
+      });
+    }
+
     return _.union(this.$addressbooks, this.$subscriptions, this.$remotes);
   };
 
@@ -748,6 +757,7 @@
 
     // Expose and resolve the promise
     this.$futureAddressBookData = futureAddressBookData.then(function(response) {
+      var selectedCards = _.map(_this.$selectedCards(), 'id');
       return AddressBook.$timeout(function() {
         var headers;
 
@@ -770,12 +780,17 @@
 
           // Instanciate Card objects
           _.reduce(_this.ids, function(cards, card, i) {
-            var data = { pid: _this.id, id: card };
+            var data = { pid: _this.id, id: card }, cardObject;
 
             // Build map of ID <=> index
             _this.idsMap[data.id] = i;
 
-            cards.push(new AddressBook.$Card(data));
+            cardObject = new AddressBook.$Card(data);
+
+            // Restore selection
+            cardObject.selected = selectedCards.indexOf(cardObject.id) > -1;
+
+            cards.push(cardObject);
 
             return cards;
           }, _this.$cards);
@@ -798,9 +813,11 @@
             // Instanciate Card objects
             _this.$cards = [];
             angular.forEach(response.headers, function(data) {
-              var o = _.zipObject(headers, data);
+              var o = _.zipObject(headers, data), cardObject;
               angular.extend(o, { pid: _this.id });
-              _this.$cards.push(new AddressBook.$Card(o));
+              cardObject = new AddressBook.$Card(o);
+              cardObject.selected = selectedCards.indexOf(cardObject.id) > -1; // Restore selection
+              _this.$cards.push(cardObject);
             });
           }
         }

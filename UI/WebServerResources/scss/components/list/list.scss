@@ -15,7 +15,7 @@ $list-item-height: 6 * $baseline-grid; // 48px
 $sg-avatar-width: 40px;
 
 // Circle diamter of color chips
-$sg-color-chip-width: 16px;
+$sg-color-chip-width: 2 * $baseline-grid;
 
 
 /*------------------------------------*\
@@ -59,9 +59,6 @@ md-list-item {
     text-overflow: ellipsis;
     text-transform: initial;
     white-space: nowrap;
-    @include from(md) {
-      line-height: $list-item-height;
-    }
   }
   .sg-inline-list-icon-label {
     text-transform: uppercase;
@@ -91,6 +88,7 @@ md-list-item {
     // Gain some space on the right side of the folder icon
     .md-list-item-inner > md-icon:first-child,
     .md-list-item-inner > md-checkbox:first-child {
+      margin-top: auto;
       margin-right: $bl * 2;
     }
 
@@ -163,28 +161,45 @@ div.md-tile-left {
     border-color: white;
     border-radius: 50%;
     border-style: solid;
+    border-width: 2px;
     display: block;
     height: $sg-color-chip-width;
     margin: 0 $bl;
     width: $sg-color-chip-width;
+    &:first-child {
+      margin-left: 0;
+    }
   }
 
   &-tile-content {
     flex: 1;
     overflow: hidden; // required in Firefox
-    .sg-tile-date, .sg-tile-size {
+    .sg-tile-date, .sg-tile-size, .sg-tile-btn {
       flex-shrink: 0;
       font-size: sg-size(body);
       font-weight: $sg-font-light;
       line-height: $sg-line-height-2;
-      margin-left: 3px;
+      margin-left: 3px !important;
     }
     .sg-tile-size {
       font-size: sg-size(caption);
     }
+    .sg-tile-btn {
+      min-height: auto;
+      min-width: auto;
+      padding: 0 3px !important;
+      margin: 0;
+      font-weight: $sg-font-medium;
+      md-icon {
+        font-size: sg-size(body);
+      }
+    }
     .#{$md}-subhead {
       @extend .#{$md}-body-1;
-      font-size: initial;
+      white-space: pre;
+      &.md-block {
+        display: block;
+      }
     }
     .#{$md}-body {
       @extend .#{$md}-caption;
@@ -248,23 +263,30 @@ div.md-tile-left {
  */
 
 .as-sortable-item {
-  touch-action: none;
-}
+  .as-sortable-hidden {
+    display: none !important;
+  }
 
-.as-sortable-hidden {
-  display: none !important;
-}
+  .as-sortable-un-selectable {
+    user-select: none;
+  }
 
-.as-sortable-un-selectable {
-  user-select: none;
-}
-
-.as-sortable-item-handle {
-  display: none; /* [1] */
+  .as-sortable-item-handle {
+    display: none; /* [1] */
+    cursor: move;
+    cursor: -webkit-grab;
+    cursor: -moz-grab;
+  }
 }
 
 .sg-list-sortable {
   position: relative;
+
+  .as-sortable-item {
+    -ms-touch-action: none;
+    touch-action: none;
+    -webkit-touch-callout: none; /* to disable context menu on iOS devices */
+  }
   .as-sortable-item-handle {
     cursor: move;
     display: block; /* [1] */

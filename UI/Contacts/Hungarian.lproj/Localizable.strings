@@ -27,6 +27,9 @@
 "OfficePhone" = "Hivatali telefon";
 "Organization" = "Szervezet";
 "Work Phone" = "Munkahelyi telefon";
+"Cell" = "Cella";
+"Pager" = "Személyhívó";
+"Pref" = "Beállítás";
 "Phone" = "Telefon";
 "Phones" = "Telefonszámok";
 "Postal" = "Irányítószám";
@@ -238,6 +241,12 @@
 = "Saját tulajdonú mappára nem lehet feliratkozni.";
 "Unable to subscribe to that folder!"
 = "Erre a mappára nem lehet feliratkozni.";
+
+/* security */
+"Security" = "Biztonság";
+"Uninstall" = "Eltávolítás";
+"Error reading the card certificate." = "Hiba történt a kártya tanúsítvány beolvasása során.";
+"No certificate associated to card." = "Nincs tanúsítvány összerendelés a kártyához.";
 
 /* acls */
 "Access rights to" = "Hozzáférés az alábbiaknak:";

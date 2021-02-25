@@ -187,7 +187,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
           attendee = [attendees objectAtIndex: i];
           [s appendFormat: @"<Attendee_Email xmlns=\"Calendar:\">%@</Attendee_Email>", [[attendee rfc822Email] activeSyncRepresentationInContext: context]];
-          [s appendFormat: @"<Attendee_Name xmlns=\"Calendar:\">%@</Attendee_Name>", [[attendee cn] activeSyncRepresentationInContext: context]];
+          if ([[attendee cn] length])
+            [s appendFormat: @"<Attendee_Name xmlns=\"Calendar:\">%@</Attendee_Name>", [[attendee cn] activeSyncRepresentationInContext: context]];
+          else
+            [s appendFormat: @"<Attendee_Name xmlns=\"Calendar:\">%@</Attendee_Name>", [[attendee rfc822Email] activeSyncRepresentationInContext: context]];
           
           attendee_status = [self _attendeeStatus: attendee];
             
@@ -905,7 +908,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
                          component: (id) component
 {
   NSString *status;
+  iCalAlarm *alarm;
+  iCalPerson *attendee;
   id o;
+
+
+  attendee = [self userAsAttendee: [context activeUser]];
+  status = [attendee partStat];
+  alarm = nil;
 
   // See: https://msdn.microsoft.com/en-us/library/ee202290(v=exchg.80).aspx
   //
@@ -925,11 +935,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
       else
         status = @"TENTATIVE";
 
-      // There's no delegate in EAS
-      [(SOGoAppointmentObject *) component changeParticipationStatus: status
-                                                        withDelegate: nil
-                                                               alarm: nil];
     }
+
+  if ((o = [theValues objectForKey: @"Reminder"]) && [o length])
+    {
+      if ([self hasAlarms])
+        alarm = [[self firstSupportedAlarm] mutableCopy];
+      else
+        alarm = [[iCalAlarm alloc] init];
+
+      [alarm takeActiveSyncValues: theValues  inContext: context];
+
+
+    }
+
+  // There's no delegate in EAS
+  [(SOGoAppointmentObject *) component changeParticipationStatus: status
+                                                    withDelegate: nil
+                                                           alarm: alarm];
+  RELEASE(alarm);
 }
 
 @end

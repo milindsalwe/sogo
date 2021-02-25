@@ -7,22 +7,30 @@
   /**
    * @ngInject
    */
-  PreferencesController.$inject = ['$q', '$window', '$state', '$mdMedia', '$mdSidenav', '$mdDialog', '$mdToast', 'sgSettings', 'sgFocus', 'Dialog', 'User', 'Account', 'Preferences', 'Authentication'];
-  function PreferencesController($q, $window, $state, $mdMedia, $mdSidenav, $mdDialog, $mdToast, sgSettings, focus, Dialog, User, Account, Preferences, Authentication) {
+  PreferencesController.$inject = ['$q', '$window', '$state', '$mdConstant', '$mdMedia', '$mdSidenav', '$mdDialog', '$mdToast', 'sgSettings', 'sgFocus', 'Dialog', 'User', 'Account', 'Preferences', 'Authentication'];
+  function PreferencesController($q, $window, $state, $mdConstant, $mdMedia, $mdSidenav, $mdDialog, $mdToast, sgSettings, focus, Dialog, User, Account, Preferences, Authentication) {
     var vm = this, mailboxes = [], today = new Date().beginOfDay();
 
     this.$onInit = function() {
       this.preferences = Preferences;
-      this.passwords = { newPassword: null, newPasswordConfirmation: null };
+      this.passwords = { newPassword: null, newPasswordConfirmation: null, oldPassword: null };
       this.timeZonesList = $window.timeZonesList;
       this.timeZonesSearchText = '';
       this.sieveVariablesCapability = ($window.sieveCapabilities.indexOf('variables') >= 0);
+      this.addressesSearchText = '';
       this.mailLabelKeyRE = new RegExp(/^(?!^_\$)[^(){} %*\"\\\\]*?$/);
+      this.emailSeparatorKeys = [
+        $mdConstant.KEY_CODE.ENTER,
+        $mdConstant.KEY_CODE.TAB,
+        $mdConstant.KEY_CODE.COMMA,
+        $mdConstant.KEY_CODE.SEMICOLON
+      ];
 
       // Set alternate avatar in User service
       if (Preferences.defaults.SOGoAlternateAvatar)
         User.$alternateAvatar = Preferences.defaults.SOGoAlternateAvatar;
 
+      this.preferences.hasActiveExternalSieveScripts();
       this.updateVacationDates();
     };
 
@@ -47,6 +55,16 @@
         });
     };
 
+    this.onDesktopNotificationsChange = function() {
+      if (this.preferences.defaults.SOGoDesktopNotifications)
+        this.preferences.authorizeNotifications();
+    };
+
+    this.resetContactsCategories = function(form) {
+      this.preferences.defaults.SOGoContactsCategories = $window.defaultContactsCategories;
+      form.$setDirty();
+    };
+
     this.resetCalendarCategories = function(form) {
       this.preferences.defaults.SOGoCalendarCategories = _.keys($window.defaultCalendarCategories);
       this.preferences.defaults.SOGoCalendarCategoriesColorsValues = _.values($window.defaultCalendarCategories);
@@ -54,10 +72,14 @@
     };
 
     this.addCalendarCategory = function(form) {
-      this.preferences.defaults.SOGoCalendarCategories.push(l('New category'));
-      this.preferences.defaults.SOGoCalendarCategoriesColorsValues.push("#aaa");
-      focus('calendarCategory_' + (this.preferences.defaults.SOGoCalendarCategories.length - 1));
-      form.$setDirty();
+      var i = _.indexOf(this.preferences.defaults.SOGoCalendarCategories, l('New category'));
+      if (i < 0) {
+        this.preferences.defaults.SOGoCalendarCategories.push(l('New category'));
+        this.preferences.defaults.SOGoCalendarCategoriesColorsValues.push("#aaa");
+        form.$setDirty();
+        i = this.preferences.defaults.SOGoCalendarCategories.length - 1;
+      }
+      focus('calendarCategory_' + i);
     };
 
     this.resetCalendarCategoryValidity = function(index, form) {
@@ -86,28 +108,26 @@
     };
 
     this.addMailAccount = function(ev, form) {
-      var account;
+      var account, index;
 
-      this.preferences.defaults.AuxiliaryMailAccounts.push({});
-
-      account = _.last(this.preferences.defaults.AuxiliaryMailAccounts);
-      angular.extend(account,
-                     {
-                       isNew: true,
-                       name: "",
-                       identities: [
-                         {
-                           fullName: "",
-                           email: ""
-                         }
-                       ],
-                       receipts: {
-                         receiptAction: "ignore",
-                         receiptNonRecipientAction: "ignore",
-                         receiptOutsideDomainAction: "ignore",
-                         receiptAnyAction: "ignore"
-                       }
-                     });
+      index = this.preferences.defaults.AuxiliaryMailAccounts.length;
+      account = new Account({
+        id: index,
+        isNew: true,
+        name: "",
+        identities: [
+          {
+            fullName: "",
+            email: ""
+          }
+        ],
+        receipts: {
+          receiptAction: "ignore",
+          receiptNonRecipientAction: "ignore",
+          receiptOutsideDomainAction: "ignore",
+          receiptAnyAction: "ignore"
+        }
+      });
 
       $mdDialog.show({
         controller: 'AccountDialogController',
@@ -117,18 +137,26 @@
         locals: {
           defaults: this.preferences.defaults,
           account: account,
-          accountId: (this.preferences.defaults.AuxiliaryMailAccounts.length-1),
+          accountId: index,
           mailCustomFromEnabled: $window.mailCustomFromEnabled
         }
       }).then(function() {
+        // Automatically expand the new mail account
+        if (!angular.isArray(vm.preferences.settings.Mail.ExpandedFolders)) {
+          vm.preferences.settings.Mail.ExpandedFolders = ['/0'];
+        }
+        vm.preferences.settings.Mail.ExpandedFolders.push('/' + index);
+        vm.preferences.defaults.AuxiliaryMailAccounts.push(account.$omit());
+
         form.$setDirty();
-      }).catch(function() {
-        vm.preferences.defaults.AuxiliaryMailAccounts.pop();
       });
     };
 
     this.editMailAccount = function(event, index, form) {
-      var account = this.preferences.defaults.AuxiliaryMailAccounts[index];
+      var data, account;
+
+      data = _.assign({ id: index }, _.cloneDeep(this.preferences.defaults.AuxiliaryMailAccounts[index]));
+      account = new Account(data);
       $mdDialog.show({
         controller: 'AccountDialogController',
         controllerAs: '$AccountDialogController',
@@ -141,11 +169,9 @@
           mailCustomFromEnabled: $window.mailCustomFromEnabled
         }
       }).then(function() {
-        vm.preferences.defaults.AuxiliaryMailAccounts[index] = account;
+        vm.preferences.defaults.AuxiliaryMailAccounts[index] = account.$omit();
         form.$setDirty();
-      }, function() {
-        // Cancel
-      });
+      }).catch(_.noop); // Cancel
     };
 
     this.removeMailAccount = function(index, form) {
@@ -205,7 +231,8 @@
         locals: {
           filter: filter,
           mailboxes: mailboxes,
-          labels: this.preferences.defaults.SOGoMailLabelsColors
+          labels: this.preferences.defaults.SOGoMailLabelsColors,
+          validateForwardAddress: validateForwardAddress
         }
       }).then(function() {
         if (!vm.preferences.defaults.SOGoSieveFilters)
@@ -227,7 +254,8 @@
         locals: {
           filter: filter,
           mailboxes: mailboxes,
-          labels: this.preferences.defaults.SOGoMailLabelsColors
+          labels: this.preferences.defaults.SOGoMailLabelsColors,
+          validateForwardAddress: validateForwardAddress
         }
       }).then(function() {
         vm.preferences.defaults.SOGoSieveFilters[index] = filter;
@@ -251,19 +279,29 @@
       return this._onFiltersOrderChanged;
     };
 
+    this.filterEmailAddresses = function ($query) {
+      return _.filter(
+        _.difference($window.defaultEmailAddresses,
+                     this.preferences.defaults.Vacation.autoReplyEmailAddresses),
+        function (address) {
+          return address.toLowerCase().indexOf($query.toLowerCase()) >= 0;
+        }
+      );
+    };
+
     this.addDefaultEmailAddresses = function(form) {
       var v = [];
 
       if (angular.isDefined(this.preferences.defaults.Vacation.autoReplyEmailAddresses)) {
-        v = this.preferences.defaults.Vacation.autoReplyEmailAddresses.split(',');
+        v = this.preferences.defaults.Vacation.autoReplyEmailAddresses;
       }
 
-      this.preferences.defaults.Vacation.autoReplyEmailAddresses = (_.union($window.defaultEmailAddresses.split(','), v)).join(',');
+      this.preferences.defaults.Vacation.autoReplyEmailAddresses = _.union($window.defaultEmailAddresses, v);
       form.$setDirty();
     };
 
     this.userFilter = function(search, excludedUsers) {
-      if (search.length < sgSettings.minimumSearchLength())
+      if (!search || search.length < sgSettings.minimumSearchLength())
         return [];
 
       return User.$filter(search, excludedUsers).then(function(users) {
@@ -273,13 +311,16 @@
             if (user.image)
               user.$$image = user.image;
             else
-              vm.preferences.avatar(user.c_email, 32, {no_404: true}).then(function(url) {
-                user.$$image = url;
-              });
+              user.$$image = vm.preferences.avatar(user.c_email, 40, {no_404: true});
             }
         });
         return users;
       });
+    };
+
+    this.manageSieveScript = function(form) {
+      this.preferences.hasActiveExternalSieveScripts(false);
+      form.$setDirty();
     };
 
     this.confirmChanges = function($event, form) {
@@ -310,23 +351,15 @@
       }
     };
 
-    this.save = function(form, options) {
-      var i, sendForm, addresses, defaultAddresses, domains, domain;
+    function validateForwardAddress(address) {
+      var defaultAddresses, domains, domain;
 
-      sendForm = true;
       domains = [];
 
-      // We do some sanity checks
-      if ($window.forwardConstraints > 0 &&
-          angular.isDefined(this.preferences.defaults.Forward) &&
-          this.preferences.defaults.Forward.enabled &&
-          angular.isDefined(this.preferences.defaults.Forward.forwardAddress)) {
-
-        addresses = this.preferences.defaults.Forward.forwardAddress.split(",");
+      if ($window.forwardConstraints > 0) {
 
         // We first extract the list of 'known domains' to SOGo
-        defaultAddresses = $window.defaultEmailAddresses.split(/, */);
-
+        defaultAddresses = $window.defaultEmailAddresses;
         _.forEach(defaultAddresses, function(adr) {
           var domain = adr.split("@")[1];
           if (domain) {
@@ -335,16 +368,41 @@
         });
 
         // We check if we're allowed or not to forward based on the domain defaults
-        for (i = 0; i < addresses.length && sendForm; i++) {
-          domain = addresses[i].split("@")[1].toLowerCase();
-          if (domains.indexOf(domain) < 0 && $window.forwardConstraints == 1) {
-            Dialog.alert(l('Error'), l("You are not allowed to forward your messages to an external email address."));
-            sendForm = false;
+        domain = address.split("@")[1].toLowerCase();
+        if (domains.indexOf(domain) < 0 && $window.forwardConstraints == 1) {
+          throw new Error(l("You are not allowed to forward your messages to an external email address."));
+        }
+        else if (domains.indexOf(domain) >= 0 && $window.forwardConstraints == 2) {
+          throw new Error(l("You are not allowed to forward your messages to an internal email address."));
+        }
+        else if ($window.forwardConstraints == 2 &&
+                 $window.forwardConstraintsDomains.length > 0 &&
+                 $window.forwardConstraintsDomains.indexOf(domain) < 0) {
+          throw new Error(l("You are not allowed to forward your messages to this domain:") + " " + domain);
+        }
+      }
+
+      return true;
+    }
+
+    this.save = function(form, options) {
+      var i, sendForm, addresses;
+
+      sendForm = true;
+
+      // We do some sanity checks
+
+      // We check if we're allowed or not to forward based on the domain defaults
+      if (this.preferences.defaults.Forward && this.preferences.defaults.Forward.enabled &&
+          this.preferences.defaults.Forward.forwardAddress) {
+        addresses = this.preferences.defaults.Forward.forwardAddress;
+        try {
+          for (i = 0; i < addresses.length; i++) {
+            validateForwardAddress(addresses[i]);
           }
-          else if (domains.indexOf(domain) >= 0 && $window.forwardConstraints == 2) {
-            Dialog.alert(l('Error'), l("You are not allowed to forward your messages to an internal email address."));
-            sendForm = false;
-          }
+        } catch (err) {
+          Dialog.alert(l('Error'), err);
+          sendForm = false;
         }
       }
 
@@ -378,35 +436,58 @@
         });
       }
 
+      // Contact categories must be unique
+      if (this.preferences.defaults.SOGoContactsCategories.length !=
+          _.uniq(this.preferences.defaults.SOGoContactsCategories).length) {
+        Dialog.alert(l('Error'), l("Contact categories must have unique names."));
+        _.forEach(this.preferences.defaults.SOGoContactsCategories, function (value, i, keys) {
+          if (form['contactCategory_' + i].$dirty &&
+              (keys.indexOf(value) != i ||
+               keys.indexOf(value, i+1) > -1)) {
+            form['contactCategory_' + i].$setValidity('duplicate', false);
+            sendForm = false;
+          }
+        });
+      }
+
       if (sendForm)
         return this.preferences.$save().then(function(data) {
           if (!options || !options.quick) {
             $mdToast.show(
               $mdToast.simple()
-                .content(l('Preferences saved'))
+                .textContent(l('Preferences saved'))
                 .position('bottom right')
                 .hideDelay(2000));
             form.$setPristine();
           }
         });
 
-      return $q.reject();
+      return $q.reject('Invalid form');
     };
 
-    this.canChangePassword = function() {
+    this.canChangePassword = function(form) {
+      if (this.passwords.newPasswordConfirmation && this.passwords.newPasswordConfirmation.length &&
+          this.passwords.newPassword != this.passwords.newPasswordConfirmation) {
+        form.newPasswordConfirmation.$setValidity('newPasswordMismatch', false);
+        return false;
+      }
+      else {
+        form.newPasswordConfirmation.$setValidity('newPasswordMismatch', true);
+      }
       if (this.passwords.newPassword && this.passwords.newPassword.length > 0 &&
           this.passwords.newPasswordConfirmation && this.passwords.newPasswordConfirmation.length &&
-          this.passwords.newPassword == this.passwords.newPasswordConfirmation)
+          this.passwords.newPassword == this.passwords.newPasswordConfirmation &&
+          this.passwords.oldPassword && this.passwords.oldPassword.length > 0)
         return true;
 
       return false;
     };
 
     this.changePassword = function() {
-      Authentication.changePassword(this.passwords.newPassword).then(function() {
+      Authentication.changePassword(this.passwords.newPassword, this.passwords.oldPassword).then(function() {
         var alert = $mdDialog.alert({
           title: l('Password'),
-          content: l('The password was changed successfully.'),
+          textContent: l('The password was changed successfully.'),
           ok: l('OK')
         });
         $mdDialog.show( alert )
@@ -450,7 +531,10 @@
 
       if (v.startDateEnabled) {
         // Enabling the start date
-        if (v.endDateEnabled && v.startDate.getTime() > v.endDate.getTime()) {
+        if (!v.startDate) {
+          v.startDate = new Date();
+        }
+        if (v.endDateEnabled && v.endDate && v.startDate.getTime() > v.endDate.getTime()) {
           v.startDate = new Date(v.endDate.getTime());
           v.startDate.addDays(-1);
         }
@@ -464,7 +548,10 @@
 
       if (v.endDateEnabled) {
         // Enabling the end date
-        if (v.startDateEnabled && v.endDate.getTime() < v.startDate.getTime()) {
+        if (!v.endDate) {
+          v.endDate = new Date();
+        }
+        if (v.startDateEnabled && v.startDate && v.endDate.getTime() < v.startDate.getTime()) {
           v.endDate = new Date(v.startDate.getTime());
           v.endDate.addDays(1);
         }
@@ -478,8 +565,8 @@
           d.Vacation.enabled) {
         if (d.Vacation.startDateEnabled) {
           r = (!d.Vacation.endDateEnabled ||
-               date.getTime() < d.Vacation.endDate.getTime()) &&
-            date.getTime() >= today.getTime();
+               !d.Vacation.endDate ||
+               date.getTime() <= d.Vacation.endDate.getTime());
         }
       }
 
@@ -493,8 +580,8 @@
           d.Vacation.enabled) {
         if (d.Vacation.endDateEnabled) {
           r = (!d.Vacation.startDateEnabled ||
-               date.getTime() > d.Vacation.startDate.getTime()) &&
-            date.getTime() >= today.getTime();
+               !d.Vacation.startDate ||
+               date.getTime() >= d.Vacation.startDate.getTime());
         }
       }
 

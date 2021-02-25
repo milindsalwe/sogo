@@ -133,7 +133,9 @@
   else if ([now dayOfCommonEra] - [messageDate dayOfCommonEra] < 7)
     {
       // Same week
-      return [[locale objectForKey: NSWeekDayNameArray] objectAtIndex: [messageDate dayOfWeek]];
+      return [NSString stringWithFormat: @"%@ %@",
+                  [[locale objectForKey: NSWeekDayNameArray] objectAtIndex: [messageDate dayOfWeek]],
+                       [dateFormatter formattedTime: messageDate]];
     }
   else
     {
@@ -359,13 +361,14 @@
   NSDictionary *urlParams, *sortingAttributes;
   SOGoUser *activeUser;
   SOGoUserSettings *us;
-  BOOL asc;
+  BOOL asc, dry;
 
   request = [context request];
   urlParams = [[request contentAsString] objectFromJSONString];
   sortingAttributes = [urlParams objectForKey: @"sortingAttributes"];
   sort = [[sortingAttributes objectForKey: @"sort"] uppercaseString];
   asc = [[sortingAttributes objectForKey: @"asc"] boolValue];
+  dry = [[sortingAttributes objectForKey: @"dry"] boolValue];
 
   activeUser = [context activeUser];
   module = @"Mail";
@@ -376,13 +379,13 @@
     {
       if ([sort isEqualToString: [self defaultSortKey]] && !asc)
 	{
-	  if (moduleSettings)
+	  if (moduleSettings && !dry)
 	    {
 	      [moduleSettings removeObjectForKey: @"SortingState"];
 	      [us synchronize];
 	    }
 	}
-      else
+      else if (!dry)
 	{
 	  // Save the sorting state in the user settings
 	  if (!moduleSettings)
@@ -452,7 +455,8 @@
                   searchString = [NSString stringWithFormat: @"(%@ doesContain: '%@')", searchBy, searchInput];
 
                 searchQualifier = [EOQualifier qualifierWithQualifierFormat: searchString];
-                [searchArray addObject: searchQualifier];
+                if (searchQualifier)
+                  [searchArray addObject: searchQualifier];
               }
             else
               {
@@ -511,11 +515,8 @@
   int i;
   BOOL first;
   BOOL expected;
-  int previousLevel;
 
-  count = 0;
   i = 0;
-  previousLevel = 0;
   expected = YES;
   threads = [NSMutableArray arrayWithObject: [NSArray arrayWithObjects: @"uid", @"level", @"first", nil]];
   rootThreads  = [_sortedUIDs objectEnumerator];
@@ -525,6 +526,7 @@
   if (![thread respondsToSelector: @selector(objectEnumerator)])
     return nil;
 
+  count = 0;
   first = [thread count] > 1;
   thread = [thread objectEnumerator];
 
@@ -543,22 +545,20 @@
         t = thread; // never happen?
       while (t && ![t isKindOfClass: [NSArray class]])
         {
-          BOOL currentFirst;
-          int currentLevel;
+          int level;
           NSArray *currentThread;
 
-          currentFirst = (first && ecount == 0) || (i == 0  && count > 0) || (count > 0 && previousLevel < 0);
-          currentLevel = (first && ecount == 0) ? 0 : (count > 0 ? count : -1);
+          level = first? 0 : (count > 0? count : -1);
           currentThread = [NSArray arrayWithObjects: t,
-                            [NSNumber numberWithInt: currentLevel],
-                            [NSNumber numberWithInt: currentFirst], nil];
+                            [NSNumber numberWithInt: level],
+                            [NSNumber numberWithInt: first], nil];
           [threads addObject: currentThread];
           i++;
           count++;
           ecount++;
           expected = NO;
-          previousLevel = currentLevel;
           t = [thread nextObject];
+          first = 0;
         }
       if (t)
         {
@@ -581,14 +581,15 @@
         }
       else
         {
-          thread = [[rootThreads nextObject] objectEnumerator]; // assume all objects of rootThreads are NSArrays
+          thread = [rootThreads nextObject];
           count = 0;
+          first = [thread count] > 1;
+          thread = [thread objectEnumerator];
           expected = YES;
         }
 
       // Prepare next iteration
       thread = [thread allObjects];
-      first = !first && (thread != nil) && [thread count] > 1;
       thread = [thread objectEnumerator];
     }
 
@@ -760,7 +761,7 @@
 
   folder = [self clientObject];
   
-  noHeaders = [[[requestContent objectForKey: @"sortingAttributes"] objectForKey:@"noHeaders"] boolValue];
+  noHeaders = [[[requestContent objectForKey: @"sortingAttributes"] objectForKey: @"noHeaders"] boolValue];
   data = [self getUIDsInFolder: folder
                    withHeaders: !noHeaders];
 

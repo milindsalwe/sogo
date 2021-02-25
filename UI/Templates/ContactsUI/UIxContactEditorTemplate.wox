@@ -12,8 +12,7 @@
         <md-button ng-click="toggleCenter()"
                    class="md-icon-button md-primary md-hue-1 hide show-gt-xs"
                    aria-hidden="true">
-          <md-icon class="icon-fullscreen"
-                   ng-class="{ 'icon-fullscreen-exit': centerIsClose }"><!-- fullscreen --></md-icon>
+          <md-icon>{{ centerIsClose ? 'fullscreen_exit' : 'fullscreen' }}</md-icon>
         </md-button>
         <div class="md-flex"><!-- spacer --></div>
         <md-button class="md-icon-button"
@@ -49,7 +48,7 @@
               <label>
                 <var:string label:value="Display"/>
               </label>
-              <input type="text" ng-maxlength="30" ng-model="editor.card.c_cn"/>
+              <input type="text" ng-maxlength="255" ng-model="editor.card.c_cn"/>
             </md-input-container>
 
             <div id="contact-identification" class="sg-fieldset" layout="row" layout-xs="column">
@@ -57,13 +56,13 @@
                 <label>
                   <var:string label:value="Firstname"/>
                 </label>
-                <input type="text" ng-model="editor.card.c_givenname"/>
+                <input type="text" ng-maxlength="255" ng-model="editor.card.c_givenname"/>
               </md-input-container>
               <md-input-container flex="40" flex-xs="100">
                 <label>
                   <var:string label:value="Lastname"/>
                 </label>
-                <input type="text" ng-model="editor.card.c_sn"/>
+                <input type="text" ng-maxlength="255" ng-model="editor.card.c_sn"/>
               </md-input-container>
               <md-input-container flex="20" flex-xs="100">
                 <label>
@@ -136,7 +135,7 @@
             <div class="section" ng-if="editor.card.hasCertificate">
               <div class="pseudo-input-container">
                 <label class="pseudo-input-label"><var:string label:value="Security"/></label>
-                <sg-block-toggle class="sg-no-print" layout="column">
+                <sg-block-toggle class="hide-print" layout="column">
                   <md-list-item class="sg-button-toggle">
                     <p class="md-flex">
                       <md-icon rsrc:md-svg-src="img/certificate.svg"><!-- certificate --></md-icon>
@@ -436,14 +435,14 @@
               <label>
                 <var:string label:value="Display"/>
               </label>
-              <input type="text" ng-maxlength="30" ng-model="editor.card.c_cn"/>
+              <input type="text" ng-maxlength="255" ng-model="editor.card.c_cn"/>
             </md-input-container>
 
             <md-input-container>
               <label>
                 <var:string label:value="Nickname"/>
               </label>
-              <input type="text" ng-maxlength="30" ng-model="editor.card.nickname"/>
+              <input type="text" ng-model="editor.card.nickname"/>
             </md-input-container>
 
             <md-input-container>

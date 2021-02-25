@@ -6,7 +6,7 @@
     xmlns:label="OGo:label">
   <md-dialog flex="60" flex-sm="80" flex-xs="100">
     <form name="eventForm" ng-submit="editor.save(eventForm)">
-      <md-toolbar ng-class="editor.component.getClassName('bg')">
+      <md-toolbar>
         <div class="md-toolbar-tools">
           <md-icon class="material-icons sg-icon-toolbar-bg">assignment_turned_in</md-icon>
           <!-- summary -->
@@ -24,7 +24,7 @@
       </md-toolbar>
       <md-dialog-content class="sg-has-form-sections">
         <div class="sg-form-section">
-          <div layout="row" layout-wrap="layout-wrap">
+          <div layout="row" layout-xs="column">
             <!-- location -->
             <md-input-container flex="50" flex-xs="100">
               <label><var:string label:value="Location"/></label>
@@ -35,7 +35,13 @@
               <label><var:string label:value="Calendar"/></label>
               <md-select ng-model="editor.component.destinationCalendar">
                 <md-option ng-repeat="calendar in editor.service.$findAll(null, true)"
-                           ng-value="calendar.id">{{calendar.name}}</md-option>
+                           ng-value="calendar.id">
+                  <div layout="row" layout-align="start center">
+                    <div class="sg-color-chip"
+                         ng-class="calendar.getClassName('bg')"><!-- color --></div>
+                    {{calendar.name}}
+                  </div>
+                </md-option>
               </md-select>
             </md-input-container>
           </div>
@@ -46,13 +52,23 @@
           </md-input-container>
           <!-- categories -->
           <md-chips ng-model="editor.component.categories">
-            <md-autocomplete
+            <md-chip-template>
+              <span class="sg-chip-color">
+                <span ng-style="{ 'background-color': editor.component.constructor.$categories[$chip] }"><!-- color --></span>
+              </span>
+              <span>{{$chip}}</span>
+            </md-chip-template>
+           <md-autocomplete
                 md-selected-item="editor.categories.selected"
                 md-search-text="editor.categories.searchText"
                 md-items="category in editor.component.constructor.filterCategories(editor.categories.searchText) | orderBy"
                 md-min-length="0"
                 label:placeholder="Add a category">
-              <span md-highlight-text="editor.categories.searchText">{{category}}</span>
+              <div layout="row" layout-align="start center">
+                <div class="sg-color-chip"
+                     ng-style="{ 'background-color': editor.component.constructor.$categories[category] }"><!-- color --></div>
+                <div md-highlight-text="editor.categories.searchText" md-highlight-flags="^i">{{category}}</div>
+              </div>
             </md-autocomplete>
           </md-chips>
           <div layout="row" layout-align="space-between center" layout-wrap="layout-wrap">
@@ -112,7 +128,7 @@
 
         <div class="sg-form-section">
           <!-- start -->
-          <div ng-show="editor.component.start">
+          <div ng-if="editor.component.start">
             <div class="pseudo-input-container">
               <label class="pseudo-input-label"><var:string label:value="From"/></label>
             </div>
@@ -123,7 +139,8 @@
               <md-datepicker ng-model="editor.component.start"
                              ng-change="editor.adjustStartTime()"
                              label:md-placeholder="From"> <!-- date picker--></md-datepicker>
-              <sg-timepicker ng-model="editor.component.start"
+              <sg-timepicker ng-model="editor.startTime"
+                             ng-required="editor.component.start"
                              ng-change="editor.adjustStartTime()"><!-- time picker --></sg-timepicker>
             </div>
           </div>
@@ -134,7 +151,7 @@
             <label class="button-label"><var:string label:value="Add From"/></label>
           </div>
           <!-- due -->
-          <div ng-show="editor.component.due">
+          <div ng-if="editor.component.due">
             <div class="pseudo-input-container">
               <label class="pseudo-input-label"><var:string label:value="Due"/></label>
             </div>
@@ -145,7 +162,8 @@
               <md-datepicker ng-model="editor.component.due"
                              ng-change="editor.adjustDueTime()"
                              label:md-placeholder="Due"><!-- date picker--></md-datepicker>
-              <sg-timepicker ng-model="editor.component.due"
+              <sg-timepicker ng-model="editor.dueTime"
+                             ng-required="editor.component.due"
                              ng-change="editor.adjustDueTime()"><!-- time picker --></sg-timepicker>
             </div>
           </div>
@@ -188,9 +206,7 @@
             <md-input-container class="md-block md-flex">
               <label><var:string label:value="Repeat"/></label>
               <md-select ng-model="editor.component.repeat.frequency" ng-disabled="editor.component.occurrenceId">
-                <var:foreach list="repeatList" item="item">
-                  <md-option var:value="item"><var:string var:value="itemRepeatText"/></md-option>
-                </var:foreach>
+                <md-option ng-value="frequency[0]" ng-repeat="frequency in ::editor.frequencies()" ng-bind-html="frequency[1]"><!-- frequency --></md-option>
               </md-select>
             </md-input-container>
             <md-button type="button" class="sg-icon-button"

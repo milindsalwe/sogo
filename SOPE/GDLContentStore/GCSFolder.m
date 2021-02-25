@@ -1,7 +1,7 @@
 /*
   Copyright (C) 2004-2007 SKYRIX Software AG
   Copyright (C) 2007      Helge Hess
-  Copyright (c) 2008-2014 Inverse inc.
+  Copyright (c) 2008-2019 Inverse inc.
 
   This file is part of SOGo.
 
@@ -248,9 +248,16 @@ static GCSStringFormatter *stringFormatter = nil;
   return [[self _channelManager] acquireOpenChannelForURL:[self aclLocation]];
 }
 
+
 - (void)releaseChannel:(EOAdaptorChannel *)_channel {
+  [self releaseChannel: _channel  immediately: NO];
+}
+
+- (void) releaseChannel: (EOAdaptorChannel *) _channel
+            immediately: (BOOL) _immediately
+{
   if (debugOn) [self debugWithFormat:@"releasing channel: %@", _channel];
-  [[self _channelManager] releaseChannel:_channel];
+  [[self _channelManager] releaseChannel:_channel  immediately: _immediately];
 }
 
 - (BOOL)canConnectStore {
@@ -380,10 +387,31 @@ static GCSStringFormatter *stringFormatter = nil;
 
 - (NSString *) _sqlForQualifier: (EOQualifier *) qualifier
 {
+  static EOAdaptor *adaptor = nil;
   NSMutableString *ms;
 
   if (qualifier)
     {
+      if (!adaptor)
+        {
+          EOAdaptorContext *adaptorCtx;
+          EOAdaptorChannel *channel;
+          channel = [self acquireStoreChannel];
+          adaptorCtx = [channel adaptorContext];
+          adaptor = [adaptorCtx adaptor];
+        }
+
+      if ([qualifier isKindOfClass: [EOAndQualifier class]])
+        [self _findQualifiers: (id)qualifier withAdaptor: adaptor];
+      else if ([qualifier isKindOfClass: [EOOrQualifier class]])
+        [self _findQualifiers: (id)qualifier withAdaptor: adaptor];
+      else if ([qualifier isKindOfClass: [EOKeyValueQualifier class]])
+        [self _formatQualifierValue: (EOKeyValueQualifier *)qualifier withAdaptor: adaptor];
+      else if ([qualifier isKindOfClass: [EONotQualifier class]])
+        [self _formatQualifierValue: (EOKeyValueQualifier *)[(id)qualifier qualifier] withAdaptor: adaptor];
+      else
+        [self errorWithFormat:@"unknown qualifier: %@", qualifier];
+
       ms = [NSMutableString stringWithCapacity:32];
       [qualifier _gcsAppendToString: ms];
     }
@@ -391,6 +419,51 @@ static GCSStringFormatter *stringFormatter = nil;
     ms = nil;
 
   return ms;
+}
+
+- (void) _findQualifiers: (id) qualifier
+             withAdaptor: (EOAdaptor *) adaptor
+{
+  NSArray *qs;
+  unsigned i, count;
+
+  if (qualifier == nil) return;
+
+  qs = [qualifier qualifiers];
+  if ((count = [qs count]) == 0)
+    return;
+
+  for (i = 0; i < count; i++) {
+    id q = [qs objectAtIndex: i];
+    if ([q isKindOfClass: [EOAndQualifier class]])
+      [self _findQualifiers: q withAdaptor: adaptor];
+    else if ([q isKindOfClass:[EOOrQualifier class]])
+      [self _findQualifiers: q withAdaptor: adaptor];
+    else if ([q isKindOfClass:[EOKeyValueQualifier class]])
+      [self _formatQualifierValue: (EOKeyValueQualifier *)q withAdaptor: adaptor];
+    else if ([q isKindOfClass:[EONotQualifier class]])
+      [self _formatQualifierValue: (EOKeyValueQualifier *)[q qualifier] withAdaptor: adaptor];
+    else
+      [self errorWithFormat:@"unknown qualifier: %@", q];
+  }
+}
+
+- (void) _formatQualifierValue: (EOKeyValueQualifier *) qualifier
+                   withAdaptor: (EOAdaptor *) adaptor
+{
+  NSString *field;
+  EOAttribute *attribute;
+  NSString *formattedValue;
+
+  field = [qualifier key];
+  attribute = [self _attributeForColumn: field];
+  if (attribute)
+    {
+      formattedValue = [adaptor formatValue: [qualifier value]
+                               forAttribute: attribute];
+      [qualifier setValue: formattedValue];
+      [qualifier setFormatted: YES];
+    }
 }
 
 - (NSString *)_sqlForSortOrderings:(NSArray *)_so {

@@ -1,6 +1,6 @@
 /* SOGoCalendarComponent.m - this file is part of SOGo
  *
- * Copyright (C) 2006-2016 Inverse inc.
+ * Copyright (C) 2006-2019 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -46,7 +46,7 @@
 #import <SOGo/NSString+Utilities.h>
 #import <SOGo/SOGoBuild.h>
 #import <SOGo/SOGoMailer.h>
-#import <SOGo/SOGoGroup.h>
+#import <SOGo/SOGoSource.h>
 #import <SOGo/SOGoPermissions.h>
 #import <SOGo/SOGoUser.h>
 #import <SOGo/SOGoUserSettings.h>
@@ -235,7 +235,8 @@
   tags = [NSArray arrayWithObjects: @"DTSTAMP", @"DTSTART", @"DTEND", @"DUE", @"EXDATE", @"EXRULE", @"RRULE", @"RECURRENCE-ID", nil];
   uid = [[component uid] asCryptedPassUsingScheme: @"ssha256"
                                          withSalt: [[settings userSalt] dataUsingEncoding: NSASCIIStringEncoding]
-                                      andEncoding: encHex];
+                                      andEncoding: encHex
+                                          keyPath: nil];
 
   children = [[[[component children] copy] autorelease] objectEnumerator];
 
@@ -525,7 +526,7 @@
   iCalPerson *currentAttendee;
   NSEnumerator *enumerator;
   NSAutoreleasePool *pool;
-  SOGoGroup *group;
+  NSDictionary *dict;
 
   BOOL eventWasModified;
   unsigned int i, j;
@@ -549,37 +550,49 @@
           pool = [[NSAutoreleasePool alloc] init];
         }
 
-      group = [SOGoGroup groupWithEmail: [currentAttendee rfc822Email]
-                               inDomain: domain];
-      if (group)
-	{
+      dict = [[SOGoUserManager sharedUserManager] contactInfosForUserWithUIDorEmail: [currentAttendee rfc822Email]
+                                                                           inDomain: domain];
+
+      if (dict && [[dict objectForKey: @"isGroup"] boolValue])
+        {
 	  iCalPerson *person;
 	  NSArray *members;
 	  SOGoUser *user;
+          id <SOGoSource> source;
 	  
 	  // We did decompose a group...
 	  [allAttendees removeObject: currentAttendee];
 
-	  members = [group members];
-	  for (i = 0; i < [members count]; i++)
-	    {
-	      user = [members objectAtIndex: i];
-	      eventWasModified = YES;
+          source = [[SOGoUserManager sharedUserManager] sourceWithID: [dict objectForKey: @"SOGoSource"]];
+          if ([source conformsToProtocol:@protocol(SOGoMembershipSource)])
+            {
+              members = [(id<SOGoMembershipSource>)(source) membersForGroupWithUID: [dict objectForKey: @"c_uid"]];
+              for (i = 0; i < [members count]; i++)
+                {
+                  user = [members objectAtIndex: i];
+                  eventWasModified = YES;
 
-	      // If the organizer is part of the group, we skip it from
-	      // the addition to the attendees' list
-	      if ([user hasEmail: organizerEmail])
-		continue;
-	      
-	      person = [self iCalPersonWithUID: [user login]];
-	      [person setTag: @"ATTENDEE"];
-	      [person setParticipationStatus: [currentAttendee participationStatus]];
-	      [person setRsvp: [currentAttendee rsvp]];
-	      [person setRole: [currentAttendee role]];
-			    
-	      if (![allAttendees containsObject: person])
-		[allAttendees addObject: person];
-	    }
+                  // If the organizer is part of the group, we skip it from
+                  // the addition to the attendees' list
+                  if ([user hasEmail: organizerEmail])
+                    continue;
+
+                  person = [self iCalPersonWithUID: [user login]];
+                  [person setTag: @"ATTENDEE"];
+                  [person setParticipationStatus: [currentAttendee participationStatus]];
+                  [person setRsvp: [currentAttendee rsvp]];
+                  [person setRole: [currentAttendee role]];
+
+                  if (![allAttendees containsObject: person])
+                    [allAttendees addObject: person];
+                }
+            }
+          else
+            {
+              [self errorWithFormat: @"Inconsistency error - got group identifier (%@) from a source (%@) that does not support groups.", [currentAttendee rfc822Email], [dict objectForKey: @"SOGoSource"]];
+              RELEASE(pool);
+              return NO;
+            }
 	}
       
       j++;
@@ -815,7 +828,7 @@
 
           // No organizer, grab the event's owner
           if (![senderEmail length])
-            senderEmail = shortSenderEmail = [[ownerUser defaultIdentity] objectForKey: @"email"];
+            senderEmail = shortSenderEmail = [[ownerUser primaryIdentity] objectForKey: @"email"];
 
           /* calendar part */
           eventBodyPart = [self _bodyPartForICalObject: object];
@@ -846,6 +859,7 @@
 		  p = [app pageWithName: pageName inContext: context];
 		  [p setApt: (iCalEvent *) object];
 		  [p setPreviousApt: (iCalEvent *) previousObject];
+                  [p setCurrentAttendee: attendee];
 		  
 		  if ([[object organizer] cn] && [[[object organizer] cn] length])
 		    {
@@ -893,9 +907,10 @@
 		  /* attach text part to multipart body */
 		  [body addBodyPart: bodyPart];
     
-		  /* attach calendar part to multipart body */
-		  [body addBodyPart: eventBodyPart];
-    
+		  /* attach calendar part to multipart body only if the participation role is not NON-PARTICIPANT */
+                  if ([[attendee role] caseInsensitiveCompare: @"NON-PARTICIPANT"] != NSOrderedSame)
+                    [body addBodyPart: eventBodyPart];
+
 		  /* attach multipart body to message */
 		  [msg setBody: body];
 		  [body release];
@@ -966,7 +981,8 @@
   [headerMap setObject: @"1.0" forKey: @"MIME-Version"];
 
   if (textOnly)
-    [headerMap setObject: @"text/html" forKey: @"content-type"];
+    [headerMap setObject: @"text/html; charset=utf-8"
+                  forKey: @"content-type"];
   else
     [headerMap setObject: @"multipart/mixed" forKey: @"content-type"];
 

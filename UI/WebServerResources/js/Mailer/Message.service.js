@@ -26,6 +26,15 @@
         this.init(futureMessageData);
       }
       this.uid = parseInt(futureMessageData.uid);
+      this.level = parseInt(futureMessageData.level);
+      this.first = parseInt(futureMessageData.first) === 1;
+      if (this.first) {
+        this.threadCount = parseInt(futureMessageData.count);
+        this.collapsed = (futureMessageData.collapsed === true);
+      }
+      else if (!isNaN(this.level) && this.level >= 0) {
+        this.threadMember = true;
+      }
     }
     else {
       // The promise will be unwrapped first
@@ -171,10 +180,11 @@
           index = this.$mailbox.uidsMap[oldUID];
           this.$mailbox.uidsMap[uid] = index;
           delete this.$mailbox.uidsMap[oldUID];
+          this.$mailbox.$messages[index].uid = this.uid;
 
           // Update messages list of mailbox
           _.forEach(['from', 'to', 'subject'], function(attr) {
-            _this.$mailbox.$messages[index][attr] = _this[attr];
+            _this.$mailbox.$messages[index][attr] = _this.editable[attr];
           });
         }
       }
@@ -273,12 +283,22 @@
    * @returns true if the message is not a draft and has more than one recipient
    */
   Message.prototype.allowReplyAll = function() {
+    var identities = _.map(this.$mailbox.$account.identities, 'email');
     var recipientsCount = 0;
-    recipientsCount = _.reduce(['to', 'cc'], _.bind(function(count, type) {
-      if (this[type])
-        return count + this[type].length;
-      else
+    recipientsCount = _.reduce(['to', 'cc', 'bcc', 'reply-to'], _.bind(function(count, type) {
+      var typeCount = 0;
+      if (this[type]) {
+        typeCount = this[type].length;
+        _.forEach(this[type], function(recipient) {
+          if (_.indexOf(identities, recipient.email) >= 0) {
+            typeCount--;
+          }
+        });
+        return count + typeCount;
+      }
+      else {
         return count;
+      }
     }, this), recipientsCount);
 
     return !this.isDraft && recipientsCount > 1;
@@ -320,13 +340,22 @@
               };
             }
             else if (part.type == 'UIxMailPartEncryptedViewer') {
-              _this.encrypted = {
-                valid: part.valid
-              };
-              if (part.valid)
-                _this.encrypted.message = l("This message is encrypted");
-              else
-                _this.encrypted.message = l("This message can't be decrypted. Please make sure you have uploaded your S/MIME certificate from the mail preferences module.");
+              if (part.encrypted) {
+                _this.encrypted = {
+                  valid: part.decrypted
+                };
+                if (part.decrypted)
+                  _this.encrypted.message = l("This message is encrypted");
+                else
+                  _this.encrypted.message = l("This message can't be decrypted. Please make sure you have uploaded your S/MIME certificate from the mail preferences module.");
+              }
+              if (part.opaqueSigned) {
+                _this.signed = {
+                  valid: part.valid,
+                  certificate: part.certificates[part.certificates.length - 1],
+                  message: part.message
+                };
+              }
             }
             _.forEach(part.content, function(mixedPart) {
               _visit(mixedPart);
@@ -414,7 +443,7 @@
       return Message.$$resource.fetch(_this.$absolutePath({asDraft: true}), 'edit').then(function(data) {
         // Try to match a known account identity from the specified "from" address
         var identity = _.find(_this.$mailbox.$account.identities, function(identity) {
-          return data.from.toLowerCase().indexOf(identity.email) !== -1;
+          return data.from && data.from.toLowerCase().indexOf(identity.email) !== -1;
         });
         if (identity)
           data.from = identity.full;
@@ -528,7 +557,7 @@
   };
 
   /**
-   * @function $markAsFlaggedOrUnflagged
+   * @function toggleFlag
    * @memberof Message.prototype
    * @desc Add or remove a the \\Flagged flag on the current message.
    * @returns a promise of the HTTP operation
@@ -545,6 +574,24 @@
         _this.isflagged = !_this.isflagged;
       });
     });
+  };
+
+  /**
+   * @function toggleThread
+   * @memberof Message.prototype
+   * @desc Collapse or expand mail thread
+   * @returns a promise of the HTTP operation
+   */
+  Message.prototype.toggleThread = function() {
+    var _this = this,
+        action = 'markMessageCollapse';
+
+    if (this.collapsed)
+      action = 'markMessageUncollapse';
+
+    this.collapsed = !this.collapsed;
+
+    return Message.$$resource.post(this.$absolutePath(), action);
   };
 
   /**
@@ -698,7 +745,7 @@
    */
   Message.prototype.$save = function() {
     var _this = this,
-        data = this.editable;
+        data = this.$omit();
 
     Message.$log.debug('save = ' + JSON.stringify(data, undefined, 2));
 
@@ -718,7 +765,7 @@
    */
   Message.prototype.$send = function() {
     var _this = this,
-        data = angular.copy(this.editable);
+        data = this.$omit();
 
     Message.$log.debug('send = ' + JSON.stringify(data, undefined, 2));
 
@@ -780,9 +827,15 @@
    */
   Message.prototype.$omit = function(options) {
     var message = {},
-        privateAttributes = options && options.privateAttributes;
-    angular.forEach(this, function(value, key) {
-      if (key != 'constructor' && key[0] != '$' || privateAttributes) {
+        privateAttributes = options && options.privateAttributes,
+        source = privateAttributes ? this : this.editable;
+    angular.forEach(source, function(value, key) {
+      if (_.includes(['to', 'cc', 'bcc'], key) && !privateAttributes) {
+        message[key] = _.map(value, function (addr) {
+          return addr.toString();
+        });
+      }
+      else if (key != 'constructor' && key[0] != '$' || privateAttributes) {
         message[key] = value;
       }
     });

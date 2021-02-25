@@ -25,11 +25,12 @@
         '                 ng-model="$ctrl.mailbox.$expanded"',
         '                 ng-disabled="$ctrl.mailbox.children.length == 0"',
         '                 ng-change="$ctrl.mailbox.$account.$flattenMailboxes({ reload: true, saveState: true })">',
-        '    <md-icon>{{$ctrl.mailbox.$icon}}</md-icon></md-checkbox>',
+        '    </md-checkbox>',
         '  </div>',
         '  <p class="sg-item-name"',
         '    ng-click="$ctrl.selectFolder($event)"',
         '    ng-dblclick="$ctrl.editFolder($event)">',
+        '    <md-icon ng-class="{ \'sg-opacity-70\': $ctrl.mailbox.isNoSelect() }">{{$ctrl.mailbox.$icon}}</md-icon>',
         '    <span ng-bind="$ctrl.mailbox.$displayName"></span>',
         '    <span class="sg-counter-badge ng-hide"',
         '          ng-show="$ctrl.mailbox.unseenCount"',
@@ -42,7 +43,7 @@
         '           sg-enter="$ctrl.saveFolder($event)"',
         '           sg-escape="$ctrl.revertEditing()" />',
         '  </md-input-container>',
-        '  <md-icon class="md-menu" ng-click="$ctrl.showMenu($event)" aria-label="' + l("Options") + '">more_vert</md-icon>'
+        '  <md-icon class="md-menu md-secondary-container" ng-click="$ctrl.showMenu($event)" aria-label="' + l("Options") + '">more_vert</md-icon>'
       ].join(''),
       controller: 'sgMailboxListItemController',
       controllerAs: '$ctrl'
@@ -91,7 +92,7 @@
       if ($event) {
         $state.go('mail.account.mailbox', {
           accountId: this.mailbox.$account.id,
-          mailboxId: encodeUriFilter(this.mailbox.path)
+          mailboxId: encodeUriFilter(encodeUriFilter(this.mailbox.path))
         });
         $event.stopPropagation();
         $event.preventDefault();
@@ -111,7 +112,7 @@
       this.inputElement.value = this.mailbox.name;
       this.clickableElement.classList.add('ng-hide');
       this.inputContainer.classList.remove('ng-hide');
-      if ($event.srcEvent.type == 'touchend') {
+      if ($event.srcEvent && $event.srcEvent.type == 'touchend') {
         $timeout(function() {
           $ctrl.inputElement.select();
           $ctrl.inputElement.focus();
@@ -248,7 +249,7 @@
           this.folder.$compact().then(function() {
             $mdToast.show(
               $mdToast.simple()
-                .content(l('Folder compacted'))
+                .textContent(l('Folder compacted'))
                 .position('top right')
                 .hideDelay(3000));
           });
@@ -258,7 +259,7 @@
           this.folder.$emptyTrash().then(function() {
             $mdToast.show(
               $mdToast.simple()
-                .content(l('Trash emptied'))
+                .textContent(l('Trash emptied'))
                 .position('top right')
                 .hideDelay(3000));
           });

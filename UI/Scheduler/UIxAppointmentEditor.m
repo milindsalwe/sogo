@@ -31,7 +31,9 @@
 #import <NGExtensions/NSObject+Logs.h>
 #import <NGExtensions/NSString+misc.h>
 
+#import <NGCards/iCalDateTime.h>
 #import <NGCards/iCalEvent.h>
+#import <NGCards/iCalTimeZone.h>
 #import <NGCards/iCalTrigger.h>
 #import <NGCards/iCalRecurrenceRule.h>
 
@@ -283,27 +285,35 @@
  * @apiParam {String} alarm.relation          Either START or END
  * @apiParam {Boolean} [alarm.attendees]      Alert attendees by email if 1 and action is email
  * @apiParam {Boolean} [alarm.organizer]      Alert organizer by email if 1 and action is email
+ * @apiParam {String} [classification]        Either public, confidential or private
  */
 - (id <WOActionResults>) rsvpAction
 {
+  static NSArray *validClassifications = nil;
   iCalPerson *delegatedAttendee;
   NSDictionary *params, *jsonResponse;
   WOResponse *response;
   WORequest *request;
   iCalAlarm *anAlarm;
+  iCalEvent *event;
   NSException *ex;
   NSString *status;
-  id alarm;
+  id alarm, classification;
   
   int replyList;
   
+  if (!validClassifications)
+    validClassifications = [[NSArray alloc] initWithObjects: @"PUBLIC", @"CONFIDENTIAL", @"PRIVATE", nil];
+
   request = [context request];
   params = [[request contentAsString] objectFromJSONString];
+  event = [self event];
 
   delegatedAttendee = nil;
   anAlarm = nil;
   status = nil;
 
+  // Set invitation reply
   replyList = [[params objectForKey: @"reply"] intValue];
 
   switch (replyList)
@@ -364,6 +374,25 @@
           }
       }
       break;
+    }
+
+  // Update classification
+  classification = [params objectForKey: @"classification"];
+  if (classification &&
+      [classification isKindOfClass: [NSString class]] &&
+      [validClassifications containsObject: [classification uppercaseString]] &&
+      ![[classification uppercaseString] isEqualToString: [event accessClass]])
+    {
+      [event setAccessClass: [classification uppercaseString]];
+      ex = [[self clientObject] saveComponent: event force: NO];
+      if (ex)
+        {
+          jsonResponse = [NSDictionary dictionaryWithObjectsAndKeys:
+                                         [ex reason], @"message",
+                                       nil];
+          return [self responseWithStatus: [ex httpStatus]
+                                andString: [jsonResponse jsonRepresentation]];
+        }
     }
 
   // Set an alarm for the user
@@ -689,7 +718,6 @@
   iCalEvent *event;
 
   BOOL resetAlarm;
-  NSInteger offset;
   NSUInteger snoozeAlarm;
 
   event = [self event];
@@ -703,6 +731,21 @@
 
   if (isAllDay)
     {
+      iCalDateTime *dt;
+      iCalTimeZone *tz;
+      NSInteger offset;
+
+      // An all-day event usually doesn't have a timezone associated to its
+      // start-end dates; however, if it does, we convert them to GMT.
+      dt = (iCalDateTime*) [event uniqueChildWithTag: @"dtstart"];
+      tz = [(iCalDateTime*) dt timeZone];
+      if (tz)
+        eventStartDate = [tz computedDateForDate: eventStartDate];
+      dt = (iCalDateTime*) [event uniqueChildWithTag: @"dtend"];
+      tz = [(iCalDateTime*) dt timeZone];
+      if (tz)
+        eventEndDate = [tz computedDateForDate: eventEndDate];
+
       eventEndDate = [eventEndDate dateByAddingYears: 0 months: 0 days: -1];
 
       // Convert the dates to the user's timezone

@@ -38,20 +38,24 @@
   - "c_version" (update revision of the file in the folder)
 */
 
+@class NSArray;
+@class NSDictionary;
+@class NSException;
+@class NSMutableArray;
+@class NSMutableString;
+@class NSNumber;
 @class NSString;
 @class NSURL;
-@class NSNumber;
-@class NSArray;
-@class NSMutableArray;
-@class NSException;
-@class NSMutableString;
-@class NSDictionary;
-@class EOQualifier;
-@class EOFetchSpecification;
+
+@class EOAdaptor;
 @class EOAdaptorChannel;
+@class EOAttribute;
+@class EOFetchSpecification;
+@class EOKeyValueQualifier;
+@class EOQualifier;
+@class GCSChannelManager;
 @class GCSFolderManager;
 @class GCSFolderType;
-@class GCSChannelManager;
 
 @interface GCSFolder : NSObject
 {
@@ -104,6 +108,9 @@
 - (EOAdaptorChannel *) acquireQuickChannel;
 - (EOAdaptorChannel *) acquireAclChannel;
 - (void) releaseChannel: (EOAdaptorChannel *) _channel;
+- (void) releaseChannel: (EOAdaptorChannel *) _channel
+            immediately: (BOOL) _immediately;
+
 
 - (BOOL) canConnectStore;
 - (BOOL) canConnectQuick;
@@ -149,6 +156,13 @@
 
 - (NSCalendarDate *) lastModificationDate;
 
+/* helpers */
+
+- (EOAttribute *) _attributeForColumn: (NSString *) _field;
+- (void) _findQualifiers: (id) qualifier
+             withAdaptor: (EOAdaptor *) adaptor;
+- (void) _formatQualifierValue: (EOKeyValueQualifier *) qualifier
+                   withAdaptor: (EOAdaptor *) adaptor;
 @end
 
 #endif /* __GDLContentStore_GCSFolder_H__ */

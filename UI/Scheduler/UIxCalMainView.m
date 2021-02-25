@@ -1,6 +1,6 @@
 /* UIxCalMainView.m - this file is part of SOGo
  *
- * Copyright (C) 2006-2018 Inverse inc.
+ * Copyright (C) 2006-2019 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -77,20 +77,6 @@
       moduleSettings = [NSMutableDictionary dictionary];
       [us setObject: moduleSettings forKey: module];
     }
-}
-
-- (NSString *) localeCode
-{
-  // WARNING : NSLocaleCode is not defined in <Foundation/NSUserDefaults.h>
-  // Region subtag must be separated by a dash
-  NSMutableString *s = [NSMutableString stringWithString: [locale objectForKey: @"NSLocaleCode"]];
-
-  [s replaceOccurrencesOfString: @"_"
-                     withString: @"-"
-                        options: 0
-                          range: NSMakeRange(0, [s length])];
-  
-  return s;
 }
 
 - (NSArray *) monthMenuItems
@@ -351,6 +337,22 @@
   view = [moduleSettings objectForKey: @"View"];
 
   return (view ? view : @"weekview");
+}
+
+- (NSArray *) repeatFrequencies
+{
+  NSArray *repeatFrequencies;
+
+  repeatFrequencies = [NSArray arrayWithObjects:
+                                 [NSArray arrayWithObjects: @"never", [self labelForKey: @"repeat_NEVER"], nil],
+                               [NSArray arrayWithObjects:  @"daily",[self labelForKey: @"repeat_DAILY"], nil],
+                               [NSArray arrayWithObjects: @"weekly",[self labelForKey: @"repeat_WEEKLY"],  nil],
+                               [NSArray arrayWithObjects: @"monthly",[self labelForKey: @"repeat_MONTHLY"],  nil],
+                               [NSArray arrayWithObjects: @"yearly", [self labelForKey: @"repeat_YEARLY"], nil],
+                               [NSArray arrayWithObjects: @"custom", [self labelForKey: @"repeat_CUSTOM"], nil],
+                               nil];
+
+  return repeatFrequencies;
 }
 
 @end

@@ -1,6 +1,6 @@
 /* UIxJSONPreferences.m - this file is part of SOGo
  *
- * Copyright (C) 2007-2017 Inverse inc.
+ * Copyright (C) 2007-2021 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,18 +25,24 @@
 #import <NGObjWeb/WOContext+SoObjects.h>
 
 #import <NGExtensions/NSObject+Logs.h>
+#import <NGImap4/NGSieveClient.h>
 
 #import <SOPE/NGCards/iCalRecurrenceRule.h>
 
+#import <SOGo/NSArray+Utilities.h>
 #import <SOGo/NSObject+Utilities.h>
 #import <SOGo/NSString+Utilities.h>
 #import <SOGo/SOGoDomainDefaults.h>
+#import <SOGo/SOGoSieveManager.h>
 #import <SOGo/SOGoUser.h>
 #import <SOGo/SOGoUserDefaults.h>
+#import <SOGo/SOGoUserFolder.h>
 #import <SOGo/SOGoUserSettings.h>
 #import <SOGo/SOGoUserProfile.h>
 #import <SOGo/WOResourceManager+SOGo.h>
 #import <SOGoUI/UIxComponent.h>
+#import <Mailer/SOGoMailAccount.h>
+#import <Mailer/SOGoMailAccounts.h>
 #import <Mailer/SOGoMailLabel.h>
 
 #import "UIxJSONPreferences.h"
@@ -69,6 +75,37 @@ static SoProduct *preferencesProduct = nil;
           [[[context activeUser] userDefaults] language]];
 
   return labelsDictionary;
+}
+
+- (WOResponse *) activeExternalSieveScriptsAction
+{
+  NGSieveClient *client;
+  NSDictionary *data;
+  SOGoMailAccount *account;
+  SOGoMailAccounts *folder;
+  SOGoSieveManager *manager;
+  WOResponse *response;
+
+  folder = [[[context activeUser] homeFolderInContext: context] mailAccountsFolder: @"Mail" inContext: context];
+  account = [folder lookupName: @"0" inContext: context acquire: NO];
+  manager = [SOGoSieveManager sieveManagerForUser: [context activeUser]];
+  client = [manager clientForAccount: account];
+
+  if (client)
+    {
+      if ([manager hasActiveExternalSieveScripts: client])
+        response = [self responseWith204];
+      else
+        response = [self responseWithStatus: 404];
+    }
+  else
+    {
+      data = [NSDictionary dictionaryWithObjectsAndKeys:
+                             @"An error occured while communicating with the Sieve server", @"message", nil];
+      response = [self responseWithStatus: 500 andJSONRepresentation: data];
+    }
+
+  return response;
 }
 
 - (WOResponse *) jsonDefaultsAction
@@ -135,6 +172,9 @@ static SoProduct *preferencesProduct = nil;
   if (![[defaults source] objectForKey: @"SOGoAnimationMode"])
     [[defaults source] setObject: [defaults animationMode]  forKey: @"SOGoAnimationMode"];
 
+  if (![[defaults source] objectForKey: @"SOGoGoogleAuthenticatorEnabled"])
+    [[defaults source] setObject: [NSNumber numberWithBool: NO]  forKey: @"SOGoGoogleAuthenticatorEnabled"];
+
   //
   // Default Calendar preferences
   //
@@ -186,10 +226,11 @@ static SoProduct *preferencesProduct = nil;
           for (count = 0; count < max; count++)
             {
               label = [defaultCalendarCategories objectAtIndex: count];
-              if ((localizedLabel = [categoryLabels objectForKey: label]))
+              if (!(localizedLabel = [categoryLabels objectForKey: label]))
                 {
-                  [filteredCalendarCategories addObject: localizedLabel];
+                  localizedLabel = label;
                 }
+              [filteredCalendarCategories addObject: localizedLabel];
             }
 
           [defaults setCalendarCategories: filteredCalendarCategories];
@@ -224,11 +265,12 @@ static SoProduct *preferencesProduct = nil;
           for (count = 0; count < max; count++)
             {
               label = [defaultCalendarCategories objectAtIndex: count];
-              if ((localizedLabel = [categoryLabels objectForKey: label]))
+              if (!(localizedLabel = [categoryLabels objectForKey: label]))
                 {
-                  [filteredCalendarCategoriesColors setObject: [defaultCalendarCategoriesColors objectForKey: label]
-                                                       forKey: localizedLabel];
+                  localizedLabel = label;
                 }
+              [filteredCalendarCategoriesColors setObject: [defaultCalendarCategoriesColors objectForKey: label]
+                                                   forKey: localizedLabel];
             }
 
           [defaults setCalendarCategoriesColors: filteredCalendarCategoriesColors];
@@ -258,14 +300,16 @@ static SoProduct *preferencesProduct = nil;
   //
   if (![defaults contactsCategories])
     {
-      categoryLabels = [[[self labelForKey: @"contacts_category_labels"  withResourceManager: [preferencesProduct resourceManager]]
-                          componentsSeparatedByString: @","]
-                          sortedArrayUsingSelector: @selector (localizedCaseInsensitiveCompare:)];
+      NSArray *contactsCategories;
 
-      if (!categoryLabels)
-        categoryLabels = [NSArray array];
+      contactsCategories = [[[[self labelForKey: @"contacts_category_labels"  withResourceManager: [preferencesProduct resourceManager]]
+                              componentsSeparatedByString: @","] trimmedComponents]
+                             sortedArrayUsingSelector: @selector (localizedCaseInsensitiveCompare:)];
 
-      [defaults setContactsCategories: categoryLabels];
+      if (!contactsCategories)
+        contactsCategories = [NSArray array];
+
+      [defaults setContactsCategories: contactsCategories];
     }
 
   if (![[defaults source] objectForKey: @"SOGoMailAddOutgoingAddresses"])
@@ -324,6 +368,11 @@ static SoProduct *preferencesProduct = nil;
       [defaults setMailLabelsColors: v];
     }
 
+  if ([domainDefaults forwardEnabled] && ![defaults forwardOptions])
+    {
+      [defaults setForwardOptions: [NSDictionary new]];
+    }
+
   if ([[defaults source] dirty])
     [defaults synchronize];
 
@@ -336,6 +385,10 @@ static SoProduct *preferencesProduct = nil;
   // Expose the SOGoAppointmentSendEMailNotifications configuration parameter from the domain defaults
   [values setObject: [NSNumber numberWithBool: [domainDefaults appointmentSendEMailNotifications]]
              forKey: @"SOGoAppointmentSendEMailNotifications"];
+
+  // Expose the SOGoLDAPGroupExpansionEnabled configuration parameter from the domain defaults
+  [values setObject: [NSNumber numberWithBool: [domainDefaults ldapGroupExpansionEnabled]]
+             forKey: @"SOGoLDAPGroupExpansionEnabled"];
 
   // Add locale code (used by CK Editor)
   [values setObject: [locale objectForKey: @"NSLocaleCode"] forKey: @"LocaleCode"];
@@ -381,10 +434,14 @@ static SoProduct *preferencesProduct = nil;
     }
   if (account)
     [accounts insertObject: account  atIndex: 0];
+  [values setObject: accounts  forKey: @"AuxiliaryMailAccounts"];
+
+  // Ignore parameters as they are injected in the system mail account ([SOGoUser mailAccounts])
+  [values removeObjectForKey: @"SOGoMailIdentities"];
   [values removeObjectForKey: @"SOGoMailCertificate"];
   [values removeObjectForKey: @"SOGoMailCertificateAlwaysSign"];
   [values removeObjectForKey: @"SOGoMailCertificateAlwaysEncrypt"];
-  [values setObject: accounts  forKey: @"AuxiliaryMailAccounts"];
+  [values removeObjectForKey: @"SOGoMailForceDefaultIdentity"];
 
   // Add the domain's default vacation subject if user has not specified a custom subject
   vacationOptions = [defaults vacationOptions];
@@ -398,6 +455,9 @@ static SoProduct *preferencesProduct = nil;
       [vacation setObject: [domainDefaults vacationDefaultSubject] forKey: @"customSubject"];
       [values setObject: vacation forKey: @"Vacation"];
     }
+
+  // Ignore hasActiveExternalSieveScripts as it will be requested on demand
+  [values removeObjectForKey: @"hasActiveExternalSieveScripts"];
 
   return [values jsonRepresentation];
 }
@@ -420,7 +480,7 @@ static SoProduct *preferencesProduct = nil;
   // sorry about this engineering brain fart!
   v = [[settings objectForKey: @"Calendar"] objectForKey: @"PreventInvitationsWhitelist"];
 
-  if (v && [v isKindOfClass: [NSString class]])
+  if (v && [v isKindOfClass: [NSString class]] && [v length] > 0)
     {
       [[settings objectForKey: @"Calendar"] setObject: [v objectFromJSONString]
                                                forKey: @"PreventInvitationsWhitelist"];

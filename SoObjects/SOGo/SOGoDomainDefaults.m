@@ -1,6 +1,6 @@
 /* SOGoDomainDefaults.m - this file is part of SOGo
  *
- * Copyright (C) 2009-2016 Inverse inc.
+ * Copyright (C) 2009-2019 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -137,11 +137,6 @@
   return [self stringForKey: @"NGImap4ConnectionGroupIdPrefix"];
 }
 
-- (NSString *) imapFolderSeparator
-{
-  return [self stringForKey: @"NGImap4ConnectionStringSeparator"];
-}
-
 #warning this should be determined from the capabilities
 /* http://www.tools.ietf.org/wg/imapext/draft-ietf-imapext-acl/ */
 - (BOOL) imapAclConformsToIMAPExt
@@ -201,6 +196,16 @@
   return [self boolForKey: @"SOGoSieveScriptsEnabled"];
 }
 
+- (NSString *) sieveScriptHeaderTemplateFile
+{
+  return [self stringForKey: @"SOGoSieveScriptHeaderTemplateFile"];
+}
+
+- (NSString *) sieveScriptFooterTemplateFile
+{
+  return [self stringForKey: @"SOGoSieveScriptFooterTemplateFile"];
+}
+
 - (BOOL) forwardEnabled
 {
   return [self boolForKey: @"SOGoForwardEnabled"];
@@ -215,9 +220,26 @@
   return (v > 2 ? 0 : v);
 }
 
+- (NSArray *) forwardConstraintsDomains
+{
+  return [self stringArrayForKey: @"SOGoForwardConstraintsDomains"];
+}
+
 - (BOOL) vacationEnabled
 {
   return [self boolForKey: @"SOGoVacationEnabled"];
+}
+
+- (BOOL) vacationPeriodEnabled
+{
+  id o;
+
+  o = [self stringForKey: @"SOGoVacationPeriodEnabled"];
+
+  if (o)
+    return [o boolValue];
+
+  return YES;
 }
 
 - (NSString *) vacationDefaultSubject
@@ -259,7 +281,15 @@
 
 - (NSString *) smtpServer
 {
-  return [self stringForKey: @"SOGoSMTPServer"];
+  NSString *server;
+  server = [self stringForKey: @"SOGoSMTPServer"];
+  // backwards compatibility
+  if (![server hasPrefix: @"smtp://"] &&
+      ![server hasPrefix: @"smtps://"])
+    {
+      return [NSString stringWithFormat: @"smtp://%@", server];
+    }
+  return server;
 }
 
 - (NSString *) smtpAuthenticationType
@@ -312,6 +342,11 @@
 - (NSString *) ldapContactInfoAttribute
 {
   return [self stringForKey: @"SOGoLDAPContactInfoAttribute"];
+}
+
+- (BOOL) ldapGroupExpansionEnabled
+{
+  return [self boolForKey: @"SOGoLDAPGroupExpansionEnabled"];
 }
 
 - (NSArray *) freeBusyDefaultInterval

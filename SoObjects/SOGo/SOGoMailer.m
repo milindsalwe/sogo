@@ -22,6 +22,7 @@
 
 #import <NGObjWeb/NSException+HTTP.h>
 #import <NGExtensions/NSObject+Logs.h>
+#import <NGExtensions/NSURL+misc.h>
 #import <NGMail/NGSendMail.h>
 #import <NGMail/NGSmtpClient.h>
 #import <NGMime/NGMimePartGenerator.h>
@@ -180,6 +181,11 @@
   [super dealloc];
 }
 
+- (BOOL) requiresAuthentication
+{
+  return ![mailingMechanism isEqualToString: @"sendmail"] && authenticationType;
+}
+
 - (NSException *) _sendmailSendData: (NSData *) mailData
 		       toRecipients: (NSArray *) recipients
 			     sender: (NSString *) sender
@@ -216,40 +222,27 @@
 }
 
 - (NSException *) _smtpSendData: (NSData *) mailData
-		   toRecipients: (NSArray *) recipients
-			 sender: (NSString *) sender
+                   toRecipients: (NSArray *) recipients
+                         sender: (NSString *) sender
               withAuthenticator: (id <SOGoAuthenticator>) authenticator
                       inContext: (WOContext *) woContext
 {
-  NSString *currentTo, *host, *login, *password;
-  NGInternetSocketAddress *addr;
+  NSString *currentTo, *login, *password;
   NSMutableArray *toErrors;
-  NSEnumerator *addresses; 
+  NSEnumerator *addresses;
   NGSmtpClient *client;
   NSException *result;
-  NSRange r;
-  unsigned int port;
+  NSURL * smtpUrl;
 
-  client = [NGSmtpClient smtpClient];
-  host = smtpServer;
   result = nil;
-  port = 25;
 
-  // We check if there is a port specified in the smtpServer ivar value
-  r = [smtpServer rangeOfString: @":"];
-  
-  if (r.length)
-    {
-      port = [[smtpServer substringFromIndex: r.location+1] intValue];
-      host = [smtpServer substringToIndex: r.location];
-    }
+  smtpUrl = [[[NSURL alloc] initWithString: smtpServer] autorelease];
 
-  addr = [NGInternetSocketAddress addressWithPort: port
-				  onHost: host];
+  client = [NGSmtpClient clientWithURL: smtpUrl];
 
   NS_DURING
     {
-      [client connectToAddress: addr];
+      [client connect];
       if ([authenticationType isEqualToString: @"plain"])
         {
           /* XXX Allow static credentials by peeking at the classname */
@@ -265,10 +258,9 @@
               || [login isEqualToString: @"anonymous"]
               || ![client plainAuthenticateUser: login
                                    withPassword: password])
-            result = [NSException
-                           exceptionWithHTTPStatus: 500
-                                            reason: @"cannot send message:"
-                       @" (smtp) authentication failure"];
+            result = [NSException exceptionWithHTTPStatus: 500
+                                                   reason: @"cannot send message:"
+                                  @" (smtp) authentication failure"];
         }
       else if (authenticationType)
         result = [NSException
@@ -297,26 +289,33 @@
                                       @" (smtp) all recipients discarded"];
               else if ([toErrors count] > 0)
                 result = [NSException exceptionWithHTTPStatus: 500
-                                                       reason: [NSString stringWithFormat: 
+                                                       reason: [NSString stringWithFormat:
                                                                            @"cannot send message (smtp) - recipients discarded:\n%@",
                                                                          [toErrors componentsJoinedByString: @", "]]];
               else
                 result = [self _sendMailData: mailData withClient: client];
             }
           else
-            result = [NSException
-                       exceptionWithHTTPStatus: 500
-                                        reason: @"cannot send message: (smtp) originator not accepted"];
+            result = [NSException exceptionWithHTTPStatus: 500
+                                                   reason: @"cannot send message: (smtp) originator not accepted"];
         }
       [client quit];
       [client disconnect];
     }
   NS_HANDLER
     {
-      [self errorWithFormat: @"Could not connect to the SMTP server %@ on port %d", host, port];
-      result = [NSException exceptionWithHTTPStatus: 500
-					     reason: @"cannot send message:"
-			    @" (smtp) error when connecting"];
+      [self errorWithFormat: @"Could not connect to the SMTP server %@", smtpServer];
+      if ([localException reason])
+        {
+          result = [NSException exceptionWithHTTPStatus: 500
+                                                 reason: [localException reason]];
+        }
+      else
+        {
+          result = [NSException exceptionWithHTTPStatus: 500
+                                                 reason: @"cannot send message:"
+                                @" (smtp) error when connecting"];
+        }
     }
   NS_ENDHANDLER;
 

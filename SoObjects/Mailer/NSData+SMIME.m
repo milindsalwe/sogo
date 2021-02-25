@@ -1,6 +1,6 @@
 /* NSData+SMIME.m - this file is part of SOGo
  *
- * Copyright (C) 2017-2018 Inverse inc.
+ * Copyright (C) 2017-2019 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -47,10 +47,12 @@
 //
 - (NSData *) signUsingCertificateAndKey: (NSData *) theData
 {
-  NSData *output;
+  NSData *output = NULL;
 
   BIO *tbio = NULL, *sbio = NULL, *obio = NULL;
   X509 *scert = NULL;
+  X509 *link = NULL;
+  STACK_OF(X509) *chain = NULL;
   EVP_PKEY *skey = NULL;
   PKCS7 *p7 = NULL;
   BUF_MEM *bptr;
@@ -63,15 +65,12 @@
   
   OpenSSL_add_all_algorithms();
   ERR_load_crypto_strings();
-  output = nil;
   
   bytes = [theData bytes];
   len = [theData length];
   tbio = BIO_new_mem_buf((void *)bytes, len);
 
-  // Grab the last certificate in case it's chained
-  scert = NULL;
-  while (PEM_read_bio_X509(tbio, &scert, 0, NULL) != NULL);
+  scert = PEM_read_bio_X509(tbio, NULL, 0, NULL);
 
   if (!scert)
     {
@@ -79,6 +78,10 @@
       goto cleanup;
     }
   
+  chain = sk_X509_new_null();
+  while (link = PEM_read_bio_X509_AUX(tbio, NULL, 0, NULL))
+    sk_X509_unshift(chain, link);
+
   BIO_reset(tbio);
   
   skey = PEM_read_bio_PrivateKey(tbio, NULL, 0, NULL);
@@ -93,7 +96,7 @@
   sbytes = [self bytes];
   slen = [self length];
   sbio = BIO_new_mem_buf((void *)sbytes, slen);
-  p7 = PKCS7_sign(scert, skey, NULL, sbio, flags);
+  p7 = PKCS7_sign(scert, skey, (sk_X509_num(chain) > 0) ? chain : NULL, sbio, flags);
 
   if (!p7)
     {
@@ -110,6 +113,7 @@
 
  cleanup:
   PKCS7_free(p7);
+  sk_X509_pop_free(chain, X509_free);
   X509_free(scert);     
   BIO_free(tbio);
   BIO_free(sbio);
@@ -123,7 +127,7 @@
 //
 - (NSData *) encryptUsingCertificate: (NSData *) theData
 {
-  NSData *output;
+  NSData *output = NULL;
 
   BUF_MEM *bptr = NULL;
   BIO *tbio = NULL, *sbio = NULL, *obio = NULL;
@@ -210,7 +214,7 @@
 //
 - (NSData *) decryptUsingCertificate: (NSData *) theData
 {
-  NSData *output;
+  NSData *output = NULL;
 
   BIO *tbio, *sbio, *obio;
   BUF_MEM *bptr;
@@ -292,10 +296,86 @@
   NGMimeMessageParser *parser;
   NGMimeMessage *message;
   NSData *decryptedData; 
+  NGMimeType *contentType;
+  NSString *type, *subtype, *smimetype;
  
   decryptedData = [self decryptUsingCertificate: theCertificate];
   parser = [[NGMimeMessageParser alloc] init];
   message = [parser parsePartFromData: decryptedData];
+
+  // Extract contents if the encrypted messages contains opaque signed data
+  contentType = [message contentType];
+  type = [[contentType type] lowercaseString];
+  subtype = [[contentType subType] lowercaseString];
+  if ([type isEqualToString: @"application"])
+    {
+      if ([subtype isEqualToString: @"x-pkcs7-mime"] ||
+          [subtype isEqualToString: @"pkcs7-mime"])
+	{
+	  smimetype = [[contentType valueOfParameter: @"smime-type"] lowercaseString];
+	  if ([smimetype isEqualToString: @"signed-data"])
+	    {
+	      message = [decryptedData messageFromOpaqueSignedData];
+	    }
+	}
+    }
+
+  RELEASE(parser);
+
+  return message;
+}
+
+- (NSData *) embeddedContent
+{
+  NSData *output = NULL;
+
+  BIO *sbio, *obio;
+  BUF_MEM *bptr;
+  PKCS7 *p7 = NULL;
+
+  sbio = BIO_new_mem_buf((void *)[self bytes], [self length]);
+
+  p7 = SMIME_read_PKCS7(sbio, NULL);
+
+  if (!p7)
+    {
+      NSLog(@"FATAL: could not read the signature");
+      goto cleanup;
+    }
+
+  // We output the S/MIME encrypted message
+  obio = BIO_new(BIO_s_mem());
+
+  if (!PKCS7_verify(p7, NULL, NULL, NULL, obio, PKCS7_NOVERIFY|PKCS7_NOSIGS))
+    {
+      NSLog(@"FATAL: could not extract content");
+      goto cleanup;
+    }
+
+  BIO_get_mem_ptr(obio, &bptr);
+
+  output = [NSData dataWithBytes: bptr->data  length: bptr->length];
+
+ cleanup:
+  PKCS7_free(p7);
+  BIO_free(sbio);
+  BIO_free(obio);
+
+  return output;
+}
+
+//
+//
+//
+- (NGMimeMessage *) messageFromOpaqueSignedData
+{
+  NGMimeMessageParser *parser;
+  NGMimeMessage *message;
+  NSData *extractedData;
+
+  extractedData = [self embeddedContent];
+  parser = [[NGMimeMessageParser alloc] init];
+  message = [parser parsePartFromData: extractedData];
   RELEASE(parser);
 
   return message;
@@ -306,7 +386,7 @@
 //
 - (NSData *) convertPKCS12ToPEMUsingPassword: (NSString *) thePassword
 {
-  NSData *output;
+  NSData *output = NULL;
 
   BIO *ibio, *obio;
   EVP_PKEY *pkey;
@@ -321,7 +401,6 @@
 
   OpenSSL_add_all_algorithms();
   ERR_load_crypto_strings();
-  output = nil;
 
   bytes = [self bytes];
   len = [self length];
@@ -337,7 +416,7 @@
 
   if (!PKCS12_parse(p12, [thePassword UTF8String], &pkey, &cert, &ca))
     {
-      NSLog(@"FATAL");
+      NSLog(@"FATAL: could not parse PKCS12 certificate with provided password");
       return nil;
     }
   
@@ -376,12 +455,11 @@
 //
 //
 //
-- (NSData *) convertPKCS7ToPEM
+- (NSData *) signersFromPKCS7
 {
-  NSData *output;
+  NSData *output = NULL;
 
   STACK_OF(X509) *certs = NULL;
-  STACK_OF(X509_CRL) *crls = NULL;
   BIO *ibio, *obio;
   BUF_MEM *bptr;
   PKCS7 *p7;
@@ -407,27 +485,7 @@
   // We output everything in PEM
   obio = BIO_new(BIO_s_mem());
 
-  i = OBJ_obj2nid(p7->type);
-  switch (i)
-    {
-    case NID_pkcs7_signed:
-      if (p7->d.sign != NULL)
-        {
-          certs = p7->d.sign->cert;
-          crls = p7->d.sign->crl;
-        }
-      break;
-    case NID_pkcs7_signedAndEnveloped:
-      if (p7->d.signed_and_enveloped != NULL)
-        {
-          certs = p7->d.signed_and_enveloped->cert;
-          crls = p7->d.signed_and_enveloped->crl;
-        }
-      break;
-    default:
-      break;
-    }
-
+  certs = PKCS7_get0_signers(p7, NULL, 0);
   if (certs != NULL)
     {
       X509 *x;
@@ -438,18 +496,6 @@
           PEM_write_bio_X509(obio, x);
           BIO_puts(obio, "\n");
         }
-    }
-  if (crls != NULL)
-    {
-      X509_CRL *crl;
-
-    for (i = 0; i < sk_X509_CRL_num(crls); i++)
-      {
-        crl = sk_X509_CRL_value(crls, i);
-        X509_CRL_print(obio, crl);
-        PEM_write_bio_X509_CRL(obio, crl);
-        BIO_puts(obio, "\n");
-      }
     }
 
   BIO_get_mem_ptr(obio, &bptr);

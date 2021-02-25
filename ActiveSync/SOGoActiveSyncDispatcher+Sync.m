@@ -54,6 +54,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #import <SOGo/SOGoPermissions.h>
 
 #import <NGCards/iCalCalendar.h>
+#import <NGCards/iCalPerson.h>
 
 #import <Appointments/iCalEntityObject+SOGo.h>
 #import <Appointments/SOGoAppointmentObject.h>
@@ -297,6 +298,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   NSMutableDictionary *folderMetadata, *dateCache, *syncCache, *uidCache, *allValues;
   NSString *clientId, *serverId, *easId;
   NSArray *additions, *roles;
+  SOGoUser *ownerUser;
   
   id anAddition, sogoObject, o;
   BOOL is_new;
@@ -456,6 +458,16 @@ FIXME
           else
             {
               [o takeActiveSyncValues: allValues  inContext: context];
+              // Handle situation were Alice creates an event in Bob's calendar.
+              // Bob should be the organizer, and Alice the SENT-BY.
+              ownerUser = [SOGoUser userWithLogin: [sogoObject ownerInContext: context]];
+              if (theFolderType == ActiveSyncEventFolder && ![o userIsOrganizer: ownerUser] && [[context activeUser] hasEmail: [[o organizer] rfc822Email]])
+                {
+                  [[o organizer] setCn: [ownerUser cn]];
+                  [[o organizer] setEmail: [[ownerUser allEmails] objectAtIndex: 0]];
+                  [[o organizer] setSentBy: [NSString stringWithFormat: @"\"MAILTO:%@\"", [[[context activeUser] allEmails] objectAtIndex: 0]]];
+		}
+
               [sogoObject setIsNew: is_new];
 
               if (theFolderType == ActiveSyncEventFolder)
@@ -570,6 +582,7 @@ FIXME
   NSArray *changes, *a, *roles;
   id aChange, o, sogoObject;
   NSMutableDictionary *folderMetadata, *syncCache, *uidCache;
+  SOGoUser *ownerUser;
 
   int i;
 
@@ -690,6 +703,16 @@ FIXME
 
                         if (theFolderType == ActiveSyncEventFolder)
 			  {
+                            // Handle situation were Alice creates an event in Bob's calendar.
+                            // Bob should be the organizer, and Alice the SENT-BY.
+                            ownerUser = [SOGoUser userWithLogin: [sogoObject ownerInContext: context]];
+                            if (theFolderType == ActiveSyncEventFolder && ![o userIsOrganizer: ownerUser] && [[context activeUser] hasEmail: [[o organizer] rfc822Email]])
+                              {
+                                [[o organizer] setCn: [ownerUser cn]];
+                                [[o organizer] setEmail: [[ownerUser allEmails] objectAtIndex: 0]];
+                                [[o organizer] setSentBy: [NSString stringWithFormat: @"\"MAILTO:%@\"", [[[context activeUser] allEmails] objectAtIndex: 0]]];
+                              }
+
 			    [sogoObject saveComponent: o force: YES];
 			    if ([sogoObject resourceHasAutoAccepted])
 			      [objectsToTouch addObject: sogoObject];
@@ -2012,9 +2035,8 @@ FIXME
     {
       bodyPreferenceType = [[folderMetadata objectForKey: @"FolderOptions"] objectForKey: @"BodyPreferenceType"];
 
-      // By default, send MIME mails. See #3146 for details.
       if (!bodyPreferenceType)
-        bodyPreferenceType = @"4";
+        bodyPreferenceType = @"1";
 
       mimeSupport = [[folderMetadata objectForKey: @"FolderOptions"] objectForKey: @"MIMESupport"];
       mimeTruncation = [[folderMetadata objectForKey: @"FolderOptions"] objectForKey: @"MIMETruncation"];
@@ -2212,7 +2234,7 @@ FIXME
 
                    // Cache-entry still exists but folder doesn't exists or synchronize flag is not set.
                    // We ignore the folder and wait for foldersync to do the cleanup.
-                   if (!(mfCollection && [mfCollection synchronize]))
+                   if (!(mfCollection && [(SOGoGCSFolder*)mfCollection synchronize]))
                      {
                        if (debugOn)
                          [self logWithFormat: @"EAS - Folder %@ not found. Ignoring ...", folderName];
@@ -2246,7 +2268,7 @@ FIXME
               realCollectionId = [folderName realCollectionIdWithFolderType: &mergedFolderType];
               mfCollection = [self collectionFromId: realCollectionId  type: mergedFolderType];
 
-              if (!(mfCollection && [mfCollection synchronize]))
+              if (!(mfCollection && [(SOGoGCSFolder*)mfCollection synchronize]))
                 {
                   if (debugOn)
                     [self logWithFormat: @"EAS - Folder %@ not found. Reset personal folder to cleanup", folderName];
@@ -2593,7 +2615,6 @@ FIXME
       //[output appendFormat: @"<Status>%d</Status>", 14];
     }
 
-  [output appendString: @"<Collections>"];
   s = nil;
 
   // We enter our loop detection change
@@ -2696,6 +2717,8 @@ FIXME
   //
   if (changeDetected || [[[context request] headerForKey: @"MS-ASProtocolVersion"] isEqualToString: @"2.5"] || [[[context request] headerForKey: @"MS-ASProtocolVersion"] isEqualToString: @"12.0"])
     {
+      [output appendString: @"<Collections>"];
+
       // We always return the last generated response.
       // If we only return <Sync><Collections/></Sync>,
       // iOS powered devices will simply crash.

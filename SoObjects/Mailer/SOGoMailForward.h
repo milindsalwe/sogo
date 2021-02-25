@@ -85,6 +85,9 @@
 @interface SOGoMailHungarianForward : SOGoMailForward
 @end
 
+@interface SOGoMailIndonesianForward : SOGoMailForward
+@end
+
 @interface SOGoMailIcelandicForward : SOGoMailForward
 @end
 
@@ -122,6 +125,9 @@
 @end
 
 @interface SOGoMailSerbianForward : SOGoMailForward
+@end
+
+@interface SOGoMailSerbianLatinForward : SOGoMailForward
 @end
 
 @interface SOGoMailSlovakForward : SOGoMailForward

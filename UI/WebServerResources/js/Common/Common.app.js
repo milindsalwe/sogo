@@ -139,8 +139,11 @@
   /**
    * @ngInject
    */
-  configure.$inject = ['$logProvider', '$compileProvider', '$httpProvider', '$mdThemingProvider', '$mdAriaProvider', '$qProvider'];
-  function configure($logProvider, $compileProvider, $httpProvider, $mdThemingProvider, $mdAriaProvider, $qProvider) {
+  configure.$inject = ['$animateProvider', '$logProvider', '$compileProvider', '$httpProvider', '$mdThemingProvider', '$mdAriaProvider', '$qProvider'];
+  function configure($animateProvider, $logProvider, $compileProvider, $httpProvider, $mdThemingProvider, $mdAriaProvider, $qProvider) {
+    // Disabled animation for elements with class ng-animate-disabled
+    $animateProvider.classNameFilter(/^(?:(?!ng-animate-disabled).)*$/);
+
     // Accent palette
     $mdThemingProvider.definePalette('sogo-green', {
       '50': 'eaf5e9',
@@ -182,31 +185,12 @@
       'contrastDarkColors': ['50', '100', '200'],
       // 'contrastLightColors': ['300', '400', '500', '600', '700', '800', '900', 'A100', 'A200', 'A400', 'A700']
     });
-    // Background palette
-    $mdThemingProvider.definePalette('sogo-paper', {
-      '50': 'fcf7f8',
-      '100': 'f7f1dc',
-      '200': 'ede5ca',
-      '300': 'e6d8ba',
-      '400': 'e2d2a3',
-      '500': 'd6c48d',
-      '600': 'baa870',
-      '700': '857545',
-      '800': '524517',
-      '900': '433809',
-      '1000': '000000',
-      'A100': 'ffffff',
-      'A200': 'eeeeee',
-      'A400': 'bdbdbd',
-      'A700': '616161',
-      'contrastDefaultColor': 'dark',
-      'contrastLightColors': ['800', '900']
-    });
+    // Background palette -- extends the grey palette
     var greyMap = $mdThemingProvider.extendPalette('grey', {
-      '600': '00b0c0', // used when highlighting text in md-autocomplete,
       '1000': 'baa870' // used as the background color of the busy periods of the attendees editor
     });
     $mdThemingProvider.definePalette('sogo-grey', greyMap);
+
     // Default theme definition
     $mdThemingProvider.theme('default')
       .primaryPalette('sogo-blue', {
@@ -224,8 +208,19 @@
       })
       .backgroundPalette('sogo-grey');
 
+    // Register custom stylesheet for toolbar of center lists
+    $mdThemingProvider.registerStyles([
+      'md-toolbar.md-hue-1:not(.md-menu-toolbar).md-accent {',
+      '  background-color: \'{{accent-hue-1}}\';',
+      '  color: \'{{foreground-1}}\';',
+      '}',
+      'md-toolbar.md-hue-1:not(.md-menu-toolbar).md-accent md-icon {',
+      '  color: \'{{foreground-1}}\';',
+      '  fill: \'{{foreground-1}}\';',
+      '}',
+    ].join(''));
 
-    // Register custom stylesheet for md-autocomplete
+    // Register custom stylesheet for mdAutocomplete
     $mdThemingProvider.registerStyles([
       '.md-autocomplete-suggestions.md-3-line li p {',
       '  color: \'{{foreground-2}}\';',
@@ -264,6 +259,16 @@
       '}'
     ].join(''));
 
+    // Register custom stylesheet for Mail module
+    $mdThemingProvider.registerStyles([
+      '.sg-message-thread {',
+      '  background-color: \'{{primary-100}}\';',
+      '}',
+      '.sg-message-thread-first {',
+      '  background-color: \'{{primary-200}}\';',
+      '}',
+    ].join(''));
+
     if (!window.DebugEnabled) {
       // Disable debugging information
       $logProvider.debugEnabled(false);
@@ -281,18 +286,64 @@
     $httpProvider.interceptors.push('ErrorInterceptor');
   }
 
+  function renewTicket($window, $q, $timeout, $injector, response) {
+    var deferred, iframe;
+
+    deferred = $q.defer();
+    iframe = angular.element('<iframe class="ng-hide" src="' + $window.UserFolderURL + 'recover"></iframe>');
+
+    iframe.on('load', function() {
+      var $state = $injector.get('$state');
+      if (response.config.attempt > 2) {
+        // Already attempted 3 times -- reload page
+        angular.element($window).off('beforeunload');
+        $window.location.href = $window.ApplicationBaseURL + $state.href($state.current);
+        deferred.reject();
+      }
+      else {
+        // Once the browser has followed the redirection, send the initial request
+        $timeout(function() {
+          var $http = $injector.get('$http');
+          if (response.config.attempt)
+            response.config.attempt++;
+          else
+            response.config.attempt = 1;
+          $http(response.config).then(function(response) {
+            deferred.resolve(response);
+          }, function(response) {
+            deferred.reject(response);
+          }).finally(function() {
+            $timeout(iframe.remove, 1000);
+          });
+        }, 2000); // Wait before replaying the request
+      }
+    });
+
+    document.body.appendChild(iframe[0]);
+
+    return deferred.promise;
+  }
+
   /**
    * @ngInject
    */
-  AuthInterceptor.$inject = ['$window', '$q'];
-  function AuthInterceptor($window, $q) {
+  AuthInterceptor.$inject = ['$window', '$q', '$timeout', '$injector'];
+  function AuthInterceptor($window, $q, $timeout, $injector) {
     return {
       response: function(response) {
         // When expecting JSON but receiving HTML, assume session has expired and reload page
+        var $state;
         if (response && /^application\/json/.test(response.config.headers.Accept) &&
-            /^[\n\r ]*<!DOCTYPE html>/.test(response.data)) {
-          $window.location.reload(true);
-          return $q.reject();
+            /^[\n\r\t ]*<!DOCTYPE html/.test(response.data)) {
+          if ($window.usesCASAuthentication || $window.usesSAML2Authentication) {
+            return renewTicket($window, $q, $timeout, $injector, response);
+          }
+          else {
+            $state = $injector.get('$state');
+            angular.element($window).off('beforeunload');
+            $window.location.href = $window.ApplicationBaseURL + $state.href($state.current);
+            return $q.reject();
+          }
         }
         return response;
       }
@@ -302,29 +353,23 @@
   /**
    * @ngInject
    */
-  ErrorInterceptor.$inject = ['$rootScope', '$window', '$q', '$injector'];
-  function ErrorInterceptor($rootScope, $window, $q, $injector) {
+  ErrorInterceptor.$inject = ['$rootScope', '$window', '$q', '$timeout', '$injector'];
+  function ErrorInterceptor($rootScope, $window, $q, $timeout, $injector) {
     return {
       responseError: function(rejection) {
-        var deferred, iframe;
+        var $state;
         if (/^application\/json/.test(rejection.config.headers.Accept)) {
-          // Handle CAS ticket renewal
-          if ($window.usesCASAuthentication && rejection.status == -1) {
-            deferred = $q.defer();
-            iframe = angular.element('<iframe class="ng-hide" src="' + $window.UserFolderURL + 'recover"></iframe>');
-            iframe.on('load', function() {
-              // Once the browser has followed the redirection, send the initial request
-              var $http = $injector.get('$http');
-              $http(rejection.config).then(deferred.resolve, deferred.reject);
-              iframe.remove();
-            });
-            document.body.appendChild(iframe[0]);
-            return deferred.promise;
+          // Handle SSO ticket renewal
+          if (($window.usesCASAuthentication || $window.usesSAML2Authentication) && rejection.status == -1) {
+            return renewTicket($window, $q, $timeout, $injector, rejection);
           }
-          else if ($window.usesSAML2Authentication && rejection.status == 401) {
-            $window.location.reload(true);
+          else if ($window.usesSAML2Authentication && rejection.status == 401 && !$window.recovered) {
+            $state = $injector.get('$state');
+            angular.element($window).off('beforeunload');
+            $window.recovered = true;
+            $window.location.href = $window.ApplicationBaseURL + $state.href($state.current);
           }
-          else {
+          else if (rejection.data && !rejection.data.quiet) {
             // Broadcast the response error
             $rootScope.$broadcast('http:Error', rejection);
           }

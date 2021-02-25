@@ -27,9 +27,10 @@
           protectedBy = "View";
           pageName = "UIxFilterEditor";
         };
-        identities = {
+        activeExternalSieveScripts = {
           protectedBy = "View";
-          pageName = "UIxIdentities";
+          pageName = "UIxJSONPreferences";
+          actionName = "activeExternalSieveScripts";
         };
         jsonDefaults = {
           protectedBy = "View";

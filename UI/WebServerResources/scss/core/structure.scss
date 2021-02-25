@@ -29,6 +29,10 @@ html * {
   }
 }
 
+.sg-opacity-70 {
+  opacity: .7;
+}
+
 .sg-category {
   position: absolute;
   top: 0;
@@ -49,5 +53,13 @@ html * {
 
   &:last-child {
     margin-bottom: 0;
+  }
+}
+
+// Remove "leave" transition
+// Convenient with a ng-switch statement or when using multiple ng-if statements that are mutually exclusive
+.sg-no-transition {
+  .ng-leave {
+    display: none;
   }
 }

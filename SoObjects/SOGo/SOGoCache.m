@@ -1,6 +1,6 @@
 /* SOGoCache.m - this file is part of SOGo
  *
- * Copyright (C) 2008-2014 Inverse inc.
+ * Copyright (C) 2008-2020 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -258,22 +258,6 @@ static memcached_st *handle = NULL;
 - (id) userNamed: (NSString *) name
 {
   return [users objectForKey: name];
-}
-
-- (void) registerGroup: (SOGoGroup *) group
-              withName: (NSString *) groupName
-	      inDomain: (NSString *) domainName
-
-{
-  if (group)
-    [groups setObject: group forKey: [NSString stringWithFormat: @"%@+%@", groupName, domainName]];
-}
-
-- (id) groupNamed: (NSString *) groupName
-	 inDomain: (NSString *) domainName
-
-{
-  return [groups objectForKey: [NSString stringWithFormat: @"%@+%@", groupName, domainName]];
 }
 
 - (void) registerIMAP4Connection: (NGImap4Connection *) connection

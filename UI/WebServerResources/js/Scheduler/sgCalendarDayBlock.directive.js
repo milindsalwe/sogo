@@ -19,8 +19,8 @@
       sg-block="block"
       sg-click="open(clickEvent, clickComponent)" />
   */
-  sgCalendarDayBlock.$inject = ['CalendarSettings'];
-  function sgCalendarDayBlock(CalendarSettings) {
+  sgCalendarDayBlock.$inject = ['Calendar'];
+  function sgCalendarDayBlock(Calendar) {
     return {
       restrict: 'E',
       scope: {
@@ -50,20 +50,24 @@
         '      <span ng-show="'+p+'block.component.c_priority" class="sg-priority">{{'+p+'block.component.c_priority}}</span>',
         //     Summary
         '      {{ '+p+'block.component.summary }}',
+        //     Icons
         '      <span class="icons">',
         //       Component is reccurent
-        '        <md-icon ng-if="'+p+'block.component.occurrenceId" class="material-icons icon-repeat"></md-icon>',
+        '        <md-icon ng-if="'+p+'block.component.occurrenceId">repeat</md-icon>',
         //       Component has an alarm
-        '        <md-icon ng-if="'+p+'block.component.c_nextalarm" class="material-icons icon-alarm"></md-icon>',
+        '        <md-icon ng-if="'+p+'block.component.c_nextalarm">alarm</md-icon>',
         //       Component is confidential
-        '        <md-icon ng-if="'+p+'block.component.c_classification == 2" class="material-icons icon-visibility-off"></md-icon>',
+        '        <md-icon ng-if="'+p+'block.component.c_classification == 2">visibility_off</md-icon>',
         //       Component is private
-        '        <md-icon ng-if="'+p+'block.component.c_classification == 1" class="material-icons icon-vpn-key"></md-icon>',
+        '        <md-icon ng-if="'+p+'block.component.c_classification == 1">vpn_key</md-icon>',
         '      </span>',
         //     Location
         '      <div class="secondary" ng-if="'+p+'block.component.c_location">',
         '        <md-icon>place</md-icon> <span ng-bind="'+p+'block.component.c_location"></span>',
         '      </div>',
+        //     Calendar name
+        '      <div class="secondary md-truncate" ng-if="'+p+'showCalendarName"',
+        '        ng-bind="'+p+'block.component.calendarName"></div>',
         '    </div>',
         '  </div>',
         '  <div class="ghostStartHour" ng-if="block.startHour">{{ block.startHour }}</div>',
@@ -75,16 +79,14 @@
     function link(scope, iElement, attrs) {
       var pc, left, right;
 
+
       if (!_.has(attrs, 'sgCalendarGhost')) {
 
         // Compute position
-        pc = 100 / scope.block.siblings;
+        // Add right margin (10%) for easier creation of events by mouse dragging
+        pc = 90 / scope.block.siblings;
         left = scope.block.position * pc;
         right = 100 - (scope.block.position + 1) * pc;
-
-        // Add right margin (10%) for easier creation of events by mouse dragging
-        if (right === 0)
-          right = 10;
 
         // Set position
         iElement.css('left', left + '%');
@@ -99,6 +101,9 @@
           iElement.addClass('sg-event--' + scope.block.userState);
 
         if (scope.block.component) {
+          // Show calendar name for subscriptions only
+          scope.showCalendarName = Calendar.activeUser.login !== scope.block.component.c_owner;
+
           // Set background color
           iElement.addClass('bg-folder' + scope.block.component.pid);
           iElement.addClass('contrast-bdr-folder' + scope.block.component.pid);

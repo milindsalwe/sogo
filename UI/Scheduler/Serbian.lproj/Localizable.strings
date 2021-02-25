@@ -107,6 +107,7 @@
 "Name of the Calendar" = "Име календара";
 "new" = "Нови";
 "Print view" = "Преглед штампе";
+"Print" = "Штампај";
 "edit" = "Измени";
 "delete" = "Обриши";
 "proposal" = "Предлог";
@@ -147,6 +148,7 @@
 "Display events and tasks colors" = "Прикажи боје догађаја и задатака";
 "Borders" = "Ивице";
 "Backgrounds" = "Позадине";
+"Page Format" = "Формат стране";
 
 /* Appointments */
 "Appointment viewer" = "Прегледач састанака";
@@ -440,15 +442,45 @@ validate_untilbeforeend    = "Понављање се мора завршити 
 "Are you sure you want to delete the selected components?"
 = "Да ли сте сигурни да желите да обришете одабране компоненте?";
 
-/* Legend */
+/* Participation role */
+"Role" = "Улога";
+
+/* Participant role: participation is required */
 "Participant" = "Учесник";
+
+/* Participant role: participation is required */
+"req-participant" = "Учесник";
+
+/* Participant role: participation is optional */
 "Optional Participant" = "Могући учесник";
+
+/* Participant role: participation is optional */
+"opt-participant" = "Могући учесник";
+
+/* Participant role: participant is copied for information purposes only */
 "Non Participant" = "Није учесник";
+
+/* Participant role: participant is copied for information purposes only */
+"non-participant" = "Није учесник";
+
+/* Participant role: participant is chair of the calendar entity */
 "Chair" = "Предеседавајући";
+
+/* Participant role: participant is chair of the calendar entity */
+"chair" = "Предеседавајући";
+
+/* Participant status: needs action */
 "Needs action" = "Потребна акција";
+
+/* Participant status: event accepted */
 "Accepted" = "Прихваћено";
+
+/* Participant status: event declined */
 "Declined" = "Одбијено";
+
+/* Participant status: tentatively accepted */
 "Tentative" = "На чекању";
+
 "Free" = "Слободан";
 "Busy" = "Заузет";
 "Maybe busy" = "Можда заузет";

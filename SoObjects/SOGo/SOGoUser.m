@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2006-2016 Inverse inc.
+  Copyright (C) 2006-2021 Inverse inc.
 
   This file is part of SOGo.
 
@@ -23,6 +23,7 @@
 #import <NGObjWeb/WOContext.h>
 #import <NGObjWeb/WORequest.h>
 #import <NGExtensions/NSCalendarDate+misc.h>
+#import <NGExtensions/NSURL+misc.h>
 #import <NGExtensions/NSNull+misc.h>
 #import <NGExtensions/NSObject+Logs.h>
 
@@ -38,6 +39,10 @@
 #import "SOGoUserManager.h"
 #import "SOGoUserSettings.h"
 #import "WOResourceManager+SOGo.h"
+
+#if defined(MFA_CONFIG)
+#include <liboath/oath.h>
+#endif
 
 #import "SOGoUser.h"
 
@@ -132,7 +137,7 @@
 
   _defaults = nil;
   _settings = nil;
-  
+
   uid = nil;
   realUID = nil;
   domain = nil;
@@ -162,7 +167,7 @@
                 domain = nil;
             }
         }
-      
+
       newLogin = [newLogin stringByReplacingString: @"%40"
                                         withString: @"@"];
       if (b)
@@ -308,7 +313,7 @@
   return allEmails;
 }
 
-// 
+//
 // We always return the last object among our list of email addresses. This value
 // is always added in SOGoUserManager: -_fillContactMailRecords:
 //
@@ -338,18 +343,34 @@
 
 - (NSMutableDictionary *) defaultIdentity
 {
-  NSMutableDictionary *currentIdentity, *defaultIdentity;
-  NSEnumerator *identities;
+  NSDictionary *defaultAccount, *currentIdentity;
+  NSMutableDictionary *defaultIdentity;
+  NSArray *identities;
+  NSString *defaultEmail;
+  unsigned int count, max;
 
+  defaultEmail = [self systemEmail];
+  defaultAccount = [[self mailAccounts] objectAtIndex: 0];
   defaultIdentity = nil;
 
-  identities = [[self allIdentities] objectEnumerator];
-  while (!defaultIdentity
-	 && (currentIdentity = [identities nextObject]))
-    if ([[currentIdentity objectForKey: @"isDefault"] boolValue])
-      defaultIdentity = currentIdentity;
+  identities = [defaultAccount objectForKey: @"identities"];
+  max = [identities count];
 
-  return defaultIdentity;
+  for (count = 0; count < max; count++)
+    {
+      currentIdentity = [identities objectAtIndex: count];
+      if ([[currentIdentity objectForKey: @"isDefault"] boolValue])
+        {
+          defaultIdentity = [NSMutableDictionary dictionaryWithDictionary: currentIdentity];
+          break;
+        }
+      else if ([[currentIdentity objectForKey: @"email"] caseInsensitiveCompare: defaultEmail] == NSOrderedSame)
+        {
+          defaultIdentity = [NSMutableDictionary dictionaryWithDictionary: currentIdentity];
+        }
+    }
+
+  return defaultIdentity; // can be nil
 }
 
 - (SOGoDateFormatter *) dateFormatterInContext: (WOContext *) context
@@ -376,7 +397,7 @@
   format = [ud timeFormat];
   if (format)
     [dateFormatter setTimeFormat: format];
-  
+
   return dateFormatter;
 }
 
@@ -455,7 +476,7 @@
 
 - (SOGoUserSettings *) userSettings
 {
-  if (!_settings)  
+  if (!_settings)
     {
       _settings = [SOGoUserSettings settingsForUser: login];
       [_settings retain];
@@ -622,19 +643,21 @@
 
 - (void) _appendSystemMailAccountWithDelegatedIdentities: (BOOL) appendDeletegatedIdentities
 {
-  NSString *fullName, *replyTo, *imapLogin, *imapServer, *cImapServer, *signature,
-    *encryption, *scheme, *action, *query, *customEmail, *defaultEmail, *sieveServer;
+  NSString *fullName, *imapLogin, *imapServer, *cImapServer,
+    *encryption, *scheme, *action, *queryTls, *customEmail, *sieveServer, *tlsVerifyMode;
   NSMutableDictionary *mailAccount, *identity, *mailboxes, *receipts, *security, *mailSettings;
+  NSDictionary *queryComponents;
   NSNumber *port;
   NSMutableArray *identities, *mails;
   NSArray *delegators, *delegates;
   NSURL *url, *cUrl;
-  unsigned int count, max, default_identity;
+  unsigned int count, max; //, default_identity;
   NSInteger defaultPort;
   NSUInteger index;
+  BOOL hasDefaultIdentity;
 
-  [self userDefaults];
-  [self userSettings];
+  [self userDefaults]; // set _defaults
+  [self userSettings]; // set _settings
 
   mailSettings = [_settings objectForKey: @"Mail"];
   mailAccount = [NSMutableDictionary new];
@@ -671,36 +694,43 @@
 
   // 3. port & encryption
   scheme = [cUrl scheme] ? [cUrl scheme] : [url scheme];
-  query = [cUrl query] ? [cUrl query] : [url query];
-  
+  queryComponents = [cUrl query] ? [cUrl queryComponents] : [url queryComponents];
+  queryTls = [queryComponents valueForKey: @"tls"];
+  tlsVerifyMode = [queryComponents valueForKey: @"tlsVerifyMode"];
+
+  if (!tlsVerifyMode)
+    tlsVerifyMode = @"default";
+
   if (scheme
       && [scheme caseInsensitiveCompare: @"imaps"] == NSOrderedSame)
     {
-      if (query && [query caseInsensitiveCompare: @"tls=YES"] == NSOrderedSame)
-	{
-	  defaultPort = 143;
-	  encryption = @"tls";
-	}
+      if (queryTls && [queryTls caseInsensitiveCompare: @"YES"] == NSOrderedSame)
+        {
+          defaultPort = 143;
+          encryption = @"tls";
+        }
       else
-	{
-	  encryption = @"ssl";	
-	  defaultPort = 993;
-	}
+        {
+          encryption = @"ssl";
+          defaultPort = 993;
+        }
     }
   else
     {
-      if (query && [query caseInsensitiveCompare: @"tls=YES"] == NSOrderedSame)
+      if (queryTls && [queryTls caseInsensitiveCompare: @"YES"] == NSOrderedSame)
         encryption = @"tls";
       else
         encryption = @"none";
-      
+
       defaultPort = 143;
     }
+
   port = [cUrl port] ? [cUrl port] : [url port];
   if ([port intValue] == 0) /* port is nil or intValue == 0 */
     port = [NSNumber numberWithInt: defaultPort];
   [mailAccount setObject: port forKey: @"port"];
   [mailAccount setObject: encryption forKey: @"encryption"];
+  [mailAccount setObject: tlsVerifyMode forKey: @"tlsVerifyMode"];
 
   // 4. Sieve server
   sieveServer = [self _fetchFieldForUser: @"c_sievehostname"];
@@ -709,91 +739,100 @@
     {
       [mailAccount setObject: sieveServer  forKey: @"sieveServerName"];
     }
-  
+
   // 5. Identities
-  defaultEmail = [NSString stringWithFormat: @"%@@%@", [self loginInDomain], [self domain]];
-  default_identity = 0;
   identities = [NSMutableArray new];
+  [identities addObjectsFromArray: [_defaults mailIdentities]];
   mails = [NSMutableArray arrayWithArray: [self allEmails]];
   [mailAccount setObject: [mails objectAtIndex: 0] forKey: @"name"];
+  max = [identities count];
+  hasDefaultIdentity = NO;
+  fullName = [self cn];
+  if ([fullName length] == 0)
+    fullName = login;
 
-  replyTo = [_defaults mailReplyTo];
-
-  max = [mails count];
-
-  /* custom from */
-  if ([[self domainDefaults] mailCustomFromEnabled])
-    {
-      [self userDefaults];
-      customEmail = [_defaults mailCustomEmail];
-      fullName = [_defaults mailCustomFullName];
-      if ([customEmail length] > 0 || [fullName length] > 0)
-        {
-          if ([customEmail length] == 0)
-            customEmail = [mails objectAtIndex: 0];
-          else if ([fullName length] == 0)
-            {
-              // Custom email but default fullname; if the custom email is
-              // one of the user's emails, remove the duplicated entry
-              index = [mails indexOfObject: customEmail];
-              if (index != NSNotFound)
-                {
-                  [mails removeObjectAtIndex: index];
-                  max--;
-                }
-            }
-
-          if ([fullName length] == 0)
-            {
-              fullName = [self cn];
-              if ([fullName length] == 0)
-                fullName = login;
-            }
-
-          identity = [NSMutableDictionary new];
-          [identity setObject: customEmail forKey: @"email"];
-          [identity setObject: fullName forKey: @"fullName"];
-
-          if ([replyTo length] > 0)
-            [identity setObject: replyTo forKey: @"replyTo"];
-
-          signature = [_defaults mailSignature];
-          if (signature)
-            [identity setObject: signature forKey: @"signature"];
-          [identities addObject: identity];
-
-          if ([[identity objectForKey: @"email"] caseInsensitiveCompare: defaultEmail] == NSOrderedSame)
-            default_identity = [identities count]-1;
-
-          [identity release];
-        }
-    }
-
+  // Sanitize identities
   for (count = 0; count < max; count++)
     {
-      identity = [NSMutableDictionary new];
-      fullName = [self cn];
-      if (![fullName length])
-        fullName = login;
-      [identity setObject: fullName forKey: @"fullName"];
-      [identity setObject: [[mails objectAtIndex: count] stringByTrimmingSpaces]
-                   forKey: @"email"];
-
-      if ([replyTo length] > 0)
-        [identity setObject: replyTo forKey: @"replyTo"];
-
-      signature = [_defaults mailSignature];
-      if (signature)
-        [identity setObject: signature forKey: @"signature"];
-      [identities addObject: identity];
-
-      if ([[identity objectForKey: @"email"] caseInsensitiveCompare: defaultEmail] == NSOrderedSame)
-        default_identity = [identities count]-1;
-
-      [identity release];
+      identity = [NSMutableDictionary dictionaryWithDictionary: [identities objectAtIndex: count]];
+      customEmail = [identity objectForKey: @"email"];
+      if ([customEmail length])
+        {
+          if (![[self domainDefaults] mailCustomFromEnabled])
+            {
+              // No custom from -- enforce a valid email
+              index = [mails indexOfObject: customEmail];
+              if (index == NSNotFound)
+                {
+                  [identity setObject: [self systemEmail] forKey: @"email"];
+                }
+            }
+        }
+      else
+        {
+          // Email must be defined
+          [identity setObject: [self systemEmail] forKey: @"email"];
+        }
+      if (![[self domainDefaults] mailCustomFromEnabled])
+        {
+          // No custom from -- enforce a valid fullname and remove reply-to
+          [identity setObject: fullName forKey: @"fullName"];
+          [identity removeObjectForKey: @"replyTo"];
+        }
+      if (!appendDeletegatedIdentities)
+        {
+          [identity setObject: [NSNumber numberWithBool: YES] forKey: @"isReadOnly"];
+        }
+      if ([[identity objectForKey: @"isDefault"] boolValue])
+        {
+          if (hasDefaultIdentity || !appendDeletegatedIdentities)
+            [identity removeObjectForKey: @"isDefault"]; // only one possible default identity
+          else
+            hasDefaultIdentity = YES;
+        }
+      [identities replaceObjectAtIndex: count withObject: identity];
     }
-  [[identities objectAtIndex: default_identity] setObject: [NSNumber numberWithBool: YES]
-                                                   forKey: @"isDefault"];
+
+  // Create an identity for each missing email address
+  max = [mails count];
+  for (count = 0; count < max; count++)
+    {
+      BOOL noIdentityForEmail;
+      NSString *identityEmail;
+
+      noIdentityForEmail = YES;
+      customEmail = [mails objectAtIndex: count];
+      for (index = 0; noIdentityForEmail && index < [identities count]; index++)
+        {
+          identity = [identities objectAtIndex: index];
+          identityEmail = [identity objectForKey: @"email"];
+          if ([customEmail caseInsensitiveCompare: identityEmail] == NSOrderedSame)
+            {
+              noIdentityForEmail = NO;
+            }
+        }
+
+      if (noIdentityForEmail)
+        {
+          identity = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+                                            fullName, @"fullName",
+                                                  customEmail, @"email", nil];
+          if (appendDeletegatedIdentities &&
+              count == 0 &&
+              [identities count] == 0)
+            {
+              // First identity uses the system email -- mark it as the default and keep it editable
+              [identity setObject: [NSNumber numberWithBool: YES] forKey: @"isDefault"];
+              hasDefaultIdentity = YES;
+            }
+          else
+            {
+              // This additional identity should not appear in the identity manager of the Preferences
+              [identity setObject: [NSNumber numberWithBool: YES] forKey: @"isReadOnly"];
+            }
+          [identities addObject: identity];
+        }
+    }
 
   /* identities from delegators */
   if (appendDeletegatedIdentities)
@@ -844,6 +883,9 @@
 
   [mailAccount setObject: identities forKey: @"identities"];
   [identities release];
+
+  if ([_defaults mailForceDefaultIdentity])
+    [mailAccount setObject: [NSNumber numberWithBool: YES] forKey: @"forceDefaultIdentity"];
 
   // 6. Receipts
   if ([_defaults allowUserReceipt])
@@ -976,11 +1018,19 @@
 
 - (NSDictionary *) primaryIdentity
 {
-  NSDictionary *defaultAccount;
+  NSArray *identities;
+  NSDictionary *defaultIdentity, *defaultAccount;
 
-  defaultAccount = [[self mailAccounts] objectAtIndex: 0];
+  defaultIdentity = [self defaultIdentity];
 
-  return [[defaultAccount objectForKey: @"identities"] objectAtIndex: 0];
+  if (!defaultIdentity && [[self mailAccounts] count])
+    {
+      defaultAccount = [[self mailAccounts] objectAtIndex: 0];
+      identities = [defaultAccount objectForKey: @"identities"];
+      defaultIdentity = [identities objectAtIndex: 0];
+    }
+
+  return defaultIdentity;
 }
 
 /* folders */
@@ -1010,11 +1060,11 @@
 - (SOGoContactFolder *) personalContactsFolderInContext: (WOContext *) context
 {
   SOGoContactFolders *folders;
-  
+
   folders = [[self homeFolderInContext: context] lookupName: @"Contacts"
                                                   inContext: context
                                                     acquire: NO];
-  
+
   return [folders lookupPersonalFolder: @"personal"
                         ignoringRights: YES];
 }
@@ -1075,8 +1125,36 @@
   id authValue;
 
   authValue = [self _fetchFieldForUser: @"canAuthenticate"];
-  
+
   return [authValue boolValue];
+}
+
+- (NSString *) googleAuthenticatorKey
+{
+#if defined(MFA_CONFIG)
+  NSString *key, *result;
+  const char *s;
+  char *secret;
+
+  size_t s_len, secret_len;
+
+  key = [[[self userSettings] userSalt] substringToIndex: 12];
+  s = [key UTF8String];
+  s_len = strlen(s);
+
+  oath_init();
+  oath_base32_encode(s,s_len, &secret, &secret_len);
+  oath_done();
+
+  result = [[NSString alloc] initWithBytesNoCopy: secret
+                                          length: secret_len
+                                        encoding: NSASCIIStringEncoding
+                                    freeWhenDone: YES];
+
+  return [result autorelease];
+#else
+  return nil;
+#endif
 }
 
 /* resource */
@@ -1092,9 +1170,9 @@
 - (int) numberOfSimultaneousBookings
 {
   NSNumber *v;
-  
+
   v = [self _fetchFieldForUser: @"numberOfSimultaneousBookings"];
-  
+
   if (v)
     return [v intValue];
 

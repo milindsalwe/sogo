@@ -24,6 +24,9 @@
         this.creds.language = $window.language;
       this.loginState = false;
 
+      // Code pattern for Google verification code
+      this.verificationCodePattern = '\\d{6}';
+
       // Show login once everything is initialized
       this.showLogin = false;
       $timeout(function() { vm.showLogin = true; }, 100);
@@ -33,21 +36,32 @@
       vm.loginState = 'authenticating';
       Authentication.login(vm.creds)
         .then(function(data) {
-          vm.loginState = 'logged';
-          vm.cn = data.cn;
 
-          // Let the user see the succesfull message before reloading the page
-          $timeout(function() {
-            if ($window.location.href === data.url)
-              $window.location.reload(true);
-            else
-              $window.location.href = data.url;
-          }, 1000);
+          if (data.gamissingkey) {
+            vm.loginState = 'googleauthenticatorcode';
+          }
+          else {
+            vm.loginState = 'logged';
+            vm.cn = data.cn;
+
+            // Let the user see the succesfull message before reloading the page
+            $timeout(function() {
+              if ($window.location.href === data.url)
+                $window.location.reload(true);
+              else
+                $window.location.href = data.url;
+            }, 1000);
+          }
         }, function(msg) {
           vm.loginState = 'error';
           vm.errorMessage = msg.error;
         });
       return false;
+    };
+
+    this.restoreLogin = function() {
+      vm.loginState = false;
+      delete vm.creds.verificationCode;
     };
 
     this.showAbout = function($event) {

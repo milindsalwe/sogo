@@ -45,7 +45,6 @@ thousands of users
 and the data of Mozilla Thunderbird and Lightning
 * Improved integration with Mozilla Thunderbird and Lightning by using
 the SOGo Connector and the SOGo Integrator
-* Native compatibility for Microsoft Outlook 2003, 2007, 2010, and 2013
 * Two-way synchronization support with any Microsoft ActiveSync-capable
 device, or Outlook 2013/2016
 
@@ -62,9 +61,8 @@ SMTP are used to communicate with the SOGo platform or its
 sub-components. Mobile devices supporting the Microsoft ActiveSync
 protocol are also supported.
 
-To install and configure the native Microsoft Outlook compatibility
-layer, please refer to the _SOGo Native Microsoft Outlook Configuration
-Guide_.
+To install and configure the Outlook CalDav Synchronizer, please refer
+to the _Outlook Connector Configuration Guide_.
 
 System Requirements
 -------------------
@@ -104,7 +102,7 @@ components, together with version numbers:
 |Database server	|PostgreSQL 7.4 or later
 |LDAP server		|OpenLDAP 2.3.x or later
 |SMTP server		|Postfix 2.x
-|IMAP server		|Cyrus IMAP Server 2.3.x or later
+|IMAP server		|Cyrus IMAP Server 2.4.x or later
 |=============================================
 
 More recent versions of the software mentioned above can also be used.
@@ -167,10 +165,10 @@ Operating System Requirements
 
 The following operating systems are currently supported by SOGo:
 
-* Red Hat Enterprise Linux (RHEL) Server 5, 6 and 7
-* Community ENTerprise Operating System (CentOS) 5, 6 and 7
-* Debian GNU/Linux 6.0 (Squeeze), 7.0 (Wheezy), 8.0 (Jessie) and 9.0 (Stretch)
-* Ubuntu 12.04 (Precise), 14.04 (Trusty), 16.04 (Xenial) and 18.04 (Bionic)
+* Red Hat Enterprise Linux (RHEL) Server 6, 7 and 8
+* Community ENTerprise Operating System (CentOS) 6, 7 and 8
+* Debian GNU/Linux 6.0 (Squeeze), 7.0 (Wheezy), 8.0 (Jessie), 9.0 (Stretch) and 10.0 (Buster)
+* Ubuntu 12.04 (Precise), 14.04 (Trusty), 16.04 (Xenial), 18.04 (Bionic) and 20.04 (Focal)
 
 Make sure the required components are started automatically at boot time
 and that they are running before proceeding with the SOGo configuration.
@@ -210,7 +208,7 @@ content:
 ----
 [SOGo]
 name=Inverse SOGo Repository
-baseurl=https://<username>:<password>@packages.inverse.ca/SOGo/release/3/rhel/7/$basearch
+baseurl=https://<username>:<password>@packages.inverse.ca/SOGo/release/5/rhel/7/$basearch
 gpgcheck=1
 ----
 
@@ -231,8 +229,14 @@ Some of the softwares on which SOGo depends are available from the repository
 "Extra Packages for Enterprise Linux" (EPEL). To add EPEL to your packages
 sources, install the following package:
 
+On RHEL/CentOS 7,
 ----
 rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+----
+
+For RHEL/CentOS 8
+----
+yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
 ----
 
 SOGo relies on the GNUstep packages provided by Inverse and must not use the
@@ -240,7 +244,7 @@ packages from EPEL. Adjust the repository definition to exclude those packages:
 
 ----
 sed -i '/enabled=1/a \
-exclude=gnustep*' /etc/yum.repos.d/epel.repo
+  exclude=gnustep*' /etc/yum.repos.d/epel.repo
 ----
 
 For more information on EPEL, visit http://fedoraproject.org/wiki/EPEL/.
@@ -475,7 +479,7 @@ by SOGo to sign and encrypt communications with the SAML2 identity
 provider. This file must be generated for each running SOGo service
 (rather than host). Make sure this file is readable by the SOGo user.
 
-|S |SOGoSAML2CertiticateLocation
+|S |SOGoSAML2CertificateLocation
 |The location of the SSL certificate file. This file must be generated
 for each running SOGo service. Make sure this file is readable by the SOGo user.
 
@@ -696,7 +700,7 @@ Defaults to `NO` when unset.
 For this feature to work properly when authenticating against AD or
 Samba4, the LDAP connection must use SSL/TLS. Server side restrictions
 can also cause the password change to fail, in which case SOGo will only
-log a 'Constraint violation (0x13)' error. These restrictions include 
+log a 'Constraint violation (0x13)' error. These restrictions include
 password too young, complexity constraints not satisfied, user cannot
 change password, etc...  Also note that Samba has a minimum password age
 of 1 day by default.
@@ -972,7 +976,15 @@ a replacement for the hostname part in the URI provided by the
 _SOGoSieveServer_ parameter.
 
 |baseDN
-|The base DN of your user entries.
+|The base DN of your user entries. You can use `%d` in this value if you
+want the base DN to be built dynamically from the user's domain during
+the login process. If you use that, you might always enable bindAsCurrentUser.
+
+For example: `baseDN = "ou=%d,ou=domains,dc=example,dc=com";`
+
+Moreover, if you use the dynamic base DN, you should use set
+UIDFieldName to `mail` in order to be able to extract the domain
+name automatically during the backup/restore process.
 
 |KindFieldName (optional)
 |If set, SOGo will try to determine if the value of the field
@@ -1022,6 +1034,11 @@ _bindDN_ and _bindPassword_ will still be required to find the proper DN
 |bindFields (optional)
 |An array of fields to use when doing indirect binds.
 
+|lookupFields (optional)
+|Lookup fields for LDAP queries. Default is `(*)`. This can be utilized
+to lookup operational fields (which are per default not part of the result)
+such as `memberOf`: `lookupFields = ("*", "memberOf");`
+
 |hostname
 |A space-delimited list of LDAP URLs or LDAP hostnames.
 
@@ -1063,7 +1080,7 @@ Possible values are: `none`, `plain`, `crypt`, `md5`, `md5-crypt`,
 (plus setting of the encoding with `.b64` or `.hex`).
 
 For a more detailed description see
-http://wiki.dovecot.org/Authentication/PasswordSchemes.
+https://doc.dovecot.org/configuration_manual/authentication/password_schemes/.
 
 Note that `cram-md5` is not actually using cram-md5 (due to the lack of
 challenge-response mechanism), its just saving the intermediate MD5
@@ -1100,7 +1117,7 @@ not work for entries in this source and thus, freebusy lookups.
 repository
 
 |listRequiresDot (optional)
-|If set to `YES`, listing of this LDAP source is only possible when performing a search (respecting the SOGoSearchMinimumWordLength parameter) or when explicitely typing a single dot.
+|If set to `YES`, listing of this LDAP source is only possible when performing a search (respecting the SOGoSearchMinimumWordLength parameter) or when explicitly typing a single dot.
 Defaults to `YES` when unset.
 
 |ModulesConstraints (optional)
@@ -1167,6 +1184,12 @@ for operations is also bounded by the maximum time that the server is
 configured to allow.
 
 Defaults to `0` (unlimited).
+
+|D |SOGoLDAPGroupExpansionEnabled
+|Parameter used to enable group expansion from the Web interface.
+
+Defaults to `NO` when unset.
+
 |=======================================================================
 
 LDAP Attributes Indexing
@@ -1180,6 +1203,8 @@ attributes must be fully indexed:
 * cn
 * mail
 * sn
+* attributes of `MailFieldNames` if defined
+* attributes of `SearchFieldNames` if defined
 
 Please refer to the documentation of the software you use in order to
 index those attributes.
@@ -1282,9 +1307,9 @@ tweaking the `javax.net.ssl.trustStore` setting, either in the
 the SOGo certificate can also be added to the truststore as follows:
 
 ----
-openssl x509 -in /etc/ssl/certs/sogo-cert.pem -outform DER \ 
+openssl x509 -in /etc/ssl/certs/sogo-cert.pem -outform DER \
   -out /tmp/sogo-cert.der
-keytool -import -keystore /etc/ssl/certs/java/cacerts  \ 
+keytool -import -keystore /etc/ssl/certs/java/cacerts  \
   -file /tmp/sogo-cert.der -alias sogo-cert
 # The keystore password is 'changeit'
 # tomcat must be restarted after this operation
@@ -1298,7 +1323,7 @@ that file differs between distributions). Basically:
 
 ----
 # export tomcat's cert to openssl format
-keytool -keystore /etc/tomcat7/keystore  -exportcert -alias tomcat | \ 
+keytool -keystore /etc/tomcat7/keystore  -exportcert -alias tomcat | \
  openssl x509 -inform der >tomcat.pem
 
 Enter keystore password:  tomcat
@@ -1333,13 +1358,13 @@ pam logs and sogo logs.
 
 Currently, SOGo will ask for a CAS ticket using the same CAS service
 name for both IMAP and Sieve. *When CASifying sieve, this means that the
-`-s` parameter of `pam_cas`should be the same for both IMAP and Sieve*,
+`-s` parameter of `pam_cas` should be the same for both IMAP and Sieve*,
 otherwise the CAS server will complain:
 
 ----
 ERROR [org.jasig.cas.CentralAuthenticationServiceImpl] - ServiceTicket
 [ST-31740-hoV1brhhwMNfnBkSMVUw-ocas] with service [imap://myimapserver
-does not match supplied service [sieve://mysieveserver:2000]
+does not match supplied service [sieve://mysieveserver:4190]
 ----
 
 Finally, when using imapproxy to speed up the imap accesses, the
@@ -1635,7 +1660,7 @@ present. Required columns are:
 * `c_name`: will be used to uniquely identify entries - which can be
   identical to `c_uid`
 * `c_password`: password of the user, plain text, crypt, md5 or sha
-  encoded 
+  encoded
 * `c_cn`: the user's common name
 * `mail`: the user's email address
 
@@ -1647,21 +1672,31 @@ they have the same name as popular LDAP attributes (such as `givenName`,
 |The default algorithm used for password encryption when changing
 passwords. Possible values are: `none`, `plain`, `crypt`, `md5`,
 `md5-crypt`, `smd5`, `cram-md5`, `ldap-md5`, and `sha`, `sha256`,
-`sha512` and its ssha (e.g. `ssha` or `ssha256`) variants. Passwords can
-have the scheme prepended in the form `{scheme}encryptedPass`.
+`sha256-crypt`, `sha512`, `sha512-crypt`, its ssha (e.g. `ssha` or
+`ssha256`) variants, `blf-crypt`, `PBKDF2`, and `sym-aes-128-cbc`.
+The `argon2i` and `argon2id` password hashing algorithms are supported
+if SOGo is compiled with `libsodium`.
+Passwords can have the scheme prepended in the form
+`{scheme}encryptedPass`.
 
 If no scheme is given, _userPasswordAlgorithm_ is used instead. The
 schemes listed above follow the algorithms described in
-http://wiki.dovecot.org/Authentication/PasswordSchemes.
+https://doc.dovecot.org/configuration_manual/authentication/password_schemes/.
 
 Note that `cram-md5` is not actually using cram-md5 (due to the lack of
 challenge-response mechanism), its just saving the intermediate MD5
-context as Dovecot stores in its database. 
+context as Dovecot stores in its database.
 
 |prependPasswordScheme
 |The default behaviour is to store newly set passwords without the
 scheme (default: `NO`). This can be overridden by setting to `YES` and
-will result in passwords stored as `{scheme}encryptedPass`. 
+will result in passwords stored as `{scheme}encryptedPass`. For
+`sym-aes-128-cbc`, always set this to `NO`.
+
+|keyPath
+|For `sym-aes-128-cbc`, a global key file is required. This value
+must be set to the full path where the key file is. The key file
+must also be readable by the `sogo` user.
 
 |canAuthenticate
 |If set to `YES`, this SQL source is used for authentication.
@@ -1725,7 +1760,7 @@ See the _Multi-domains Configuration_ section in this document for more
 information.
 
 |listRequiresDot (optional)
-|If set to `YES`, listing of this SQL source is only possible when performing a search (respecting the SOGoSearchMinimumWordLength parameter) or when explicitely typing a single dot.
+|If set to `YES`, listing of this SQL source is only possible when performing a search (respecting the SOGoSearchMinimumWordLength parameter) or when explicitly typing a single dot.
 Defaults to `YES` when unset.
 
 |ModulesConstraints (optional)
@@ -1794,10 +1829,19 @@ are:
 |D |SOGoSMTPServer
 |The DNS name or IP address of the SMTP server used when
 _SOGoMailingMechanism_ is set to `smtp`.
+Supported formats are: `smtp://domain:port`, `smtps://domain`,
+`domain:port`, `smtp://domain:port/?tls=YES`. Using the option
+`tls=YES` will enforce using STARTTLS SMTP connections. Thus,
+`smtp://localhost:587/?tls=YES` would use the default MUA port
+on localhost with STARTTLS enforced.
+To disable TLS verification for localhost domains, add
+`tlsVerifyMode=allowInsecureLocalhost` to such connections:
+`smtp://localhost:587/?tls=YES&tlsVerifyMode=allowInsecureLocalhost`.
 
 |D |SOGoSMTPAuthenticationType
 |Activate SMTP authentication and specifies which type is in use.
-Current, only `PLAIN` is supported and other values will be ignored.
+Current, only `PLAIN` is supported and other values will cause
+the authentication to fail.
 
 |S |WOSendMail
 |The path of the sendmail binary.
@@ -1832,16 +1876,18 @@ messages.
 
 Defaults to `Drafts` when unset.
 
-Use a `/`  as a hierarchy separator if  referring to an IMAP subfolder.
-For example: `INBOX/Drafts`.
+Use a `/` as a hierarchy separator if referring to an IMAP subfolder.
+For example: `INBOX/Drafts`. You must use a `/` even if your real
+IMAP separator is a `.`.
 
 |U |SOGoSentFolderName
 |Parameter used to set the IMAP folder name used to store sent messages.
 
 Defaults to `Sent` when unset.
 
-Use a `/`  as a hierarchy separator if referring to an IMAP subfolder.
-For example: `INBOX/Sent`.
+Use a `/` as a hierarchy separator if referring to an IMAP subfolder.
+For example: `INBOX/Sent`. You must use a `/` even if your real
+IMAP separator is a `.`.
 
 |U |SOGoTrashFolderName
 |Parameter used to set the IMAP folder name used to store deleted
@@ -1849,8 +1895,9 @@ messages.
 
 Defaults to `Trash` when unset.
 
-Use a `/`  as a hierarchy separator if referring to an IMAP subfolder.
-For example: `INBOX/Trash`.
+Use a `/` as a hierarchy separator if referring to an IMAP subfolder.
+For example: `INBOX/Trash`. You must use a `/` even if your real
+IMAP separator is a `.`.
 
 |U |SOGoJunkFolderName
 |Parameter used to set the IMAP folder name used to store junk
@@ -1858,8 +1905,9 @@ messages.
 
 Defaults to `Junk` when unset.
 
-Use a `/`  as a hierarchy separator if referring to an IMAP subfolder.
-For example: `INBOX/Junk`. Also see the SOGoMailJunkSettings for
+Use a `/` as a hierarchy separator if referring to an IMAP subfolder.
+For example: `INBOX/Junk`. You must use a `/` even if your real
+IMAP separator is a `.`. Also see the SOGoMailJunkSettings for
 more options regarding junk/not-junk actions.
 
 |D |SOGoIMAPCASServiceName
@@ -1870,12 +1918,13 @@ value as the `-s` argument of the imap pam service.
 
 |D |SOGoIMAPServer
 |Parameter used to set the DNS name or IP address of the IMAP server
-used by SOGo. You can also use SSL or TLS by providing a value using an
-URL, such as:
+used by SOGo. You can also use SSL or TLS by providing a value using a
+URL with a fully qualified domain name, such as:
 
 [options="compact"]
-* `imaps://127.0.0.1:993`
-* `imap://127.0.0.1:143/?tls=YES`
+* `imaps://mail.acme.com:993`
+* `imap://mail.acme.com:143/?tls=YES`
+* `imap://127.0.0.1:143/?tls=YES&tlsVerifyMode=allowInsecureLocalhost`
 
 |D |SOGoSieveServer
 |Parameter used to set the DNS name or IP address of the Sieve
@@ -1883,8 +1932,14 @@ URL, such as:
 
 [options="compact"]
 * `sieve://127.0.0.1`
-* `sieve://127.0.0.1:2000`
-* `sieve://127.0.0.1:2000/?tls=YES`
+* `sieve://127.0.0.1:4190`
+
+You can also use TLS by providing a value using a URL with a fully
+qualified domain name, such as:
+
+[options="compact"]
+* `sieve://mail.acme.com:4190/?tls=YES`
+* `sieve://127.0.0.14190/?tls=YES&tlsVerifyMode=allowInsecureLocalhost`
 
 Note that TLS is supported but SSL is not.
 
@@ -1954,12 +2009,6 @@ Defaults to `/tmp`.
 
 The default value is `YES`.
 
-|S |NGImap4ConnectionStringSeparator
-|Parameter used to set the IMAP mailbox separator. Setting this will
-also have an impact on the mailbox separator used by Sieve filters.
-
-The default separator is `/`.
-
 |S |NGImap4AuthMechanism
 |Trigger the use of the IMAP `AUTHENTICATE` command with the specified
 SASL mechanism. Please note that feature might be limited at this time.
@@ -2003,7 +2052,7 @@ values are:
 * `Mail`
 * `Contacts`
 
-Defaults to `Calendar` when unset.
+Defaults to `Mail` when unset.
 
 |S |SOGoFaviconRelativeURL
 |Parameter used to specify the relative URL of the site favion.
@@ -2065,12 +2114,16 @@ Requires Sieve script support on the IMAP host.
 
 Defaults to `NO` when unset.
 
-When enabling this parameter, one may have to also enable the associated
+|D |SOGoVacationPeriodEnabled
+|When enabling this parameter, one may have to also enable the associated
 cronjob in `/etc/cron.d/sogo` in order to activate automatic vacation
-message activation and expiration.
+message activation and expiration if your Sieve server does not support
+the date extension.
 
 See the _Cronjob — Vacation messages activation and expiration_ section
 below for details.
+
+Defaults to `YES` when unset.
 
 |D |SOGoVacationDefaultSubject
 |Parameter used to define a default vacation subject if user don't specify a
@@ -2112,12 +2165,31 @@ automatically forwarding mails. When set to `0` (default), no constraint
 is enforced. When set to `1`, only internal domains can be used. When
 set to `2`, only external domains can be used.
 
+|D |SOGoForwardConstraintsDomains
+|Parameter used to set which domains are allowed as external domains
+when SOGoForwardConstraints is set to `2`. For example, setting:
+
+SOGoForwardConstraintsDomains = ("gmail.com", "googlemail.com");
+
+will allow users to forward emails to only `gmail.com` and `googlemail.com` domains.
+When empty or undefined, no constraints are imposed.
+
 |D |SOGoSieveScriptsEnabled
 |Parameter used to activate the edition from the preferences windows of
 server-side mail filters. Requires Sieve script support on the IMAP
 host.
 
 Defaults to `NO` when unset.
+
+|D |SOGoSieveScriptHeaderTemplateFile
+|Parameter used to set the full path of the Sieve script that will be
+automatically prepended to any Sieve scripts a user might define. The file
+must be encoded in UTF-8 and it must also respect the RFC5228 syntax.
+
+|D |SOGoSieveScriptFooterTemplateFile
+|Parameter used to set the full path of the Sieve script that will be
+automatically appended to any Sieve scripts a user might define. The file
+must be encoded in UTF-8 and it must also respect the RFC5228 syntax.
 
 |U |SOGoSieveFilters
 |Parameter used to define initial Sieve scripts for users. The user
@@ -2316,7 +2388,8 @@ Defaults to `below`.
 
 |U |SOGoMailReplyTo
 |The email address to use in the `reply-to` header field when the user
-sends a message.
+sends a message, if _SOGoMailCustomFromEnabled_ is set in the user's
+domain defaults.
 
 Ignored when empty.
 
@@ -2337,7 +2410,7 @@ Defaults to `below`.
 * `text`
 * `html`
 
-Defaults to `text`.
+Defaults to `html`.
 
 |S |SOGoEnableEMailAlarms
 |Parameter used to enable email-based alarms on events and tasks.
@@ -2428,7 +2501,7 @@ like this:
     SOGoTrashFolderName = Trash;
     SOGoJunkFolderName = Junk;
     SOGoMailingMechanism = smtp;
-    SOGoSMTPServer = 127.0.0.1;
+    SOGoSMTPServer = "smtp://127.0.0.1";
     SOGoUserSources = (
         {
             type = ldap;
@@ -2655,7 +2728,7 @@ objectClass: inetOrgPerson
 objectClass: person
 objectClass: organizationalPerson
 uid: sogo
-cn: SOGo Administrator 
+cn: SOGo Administrator
 mail: sogo@acme.com
 sn: Administrator
 givenName: SOGo
@@ -2722,8 +2795,8 @@ Once installed, simply uncomment the following lines from your SOGo
 Apache configuration:
 
 ----
-ProxyPass /Microsoft-Server-ActiveSync \ 
-	http://127.0.0.1:20000/SOGo/Microsoft-Server-ActiveSync \ 
+ProxyPass /Microsoft-Server-ActiveSync \
+	http://127.0.0.1:20000/SOGo/Microsoft-Server-ActiveSync \
 	retry=60 connectiontimeout=5 timeout=360
 ----
 
@@ -2782,6 +2855,11 @@ Defaults to `NO`, which means no logging is performed.
 for EAS Search operations in the GAL.
 
 If not set, it defaults to `102400` bytes, or 100 KB.
+
+|S |SOGoEASSearchInBody
+|Parameter used to enable EAS Search operation in all parts of a message.
+
+Defaults to `NO`, which means to search only in Subject- and From-header.
 |=======================================================================
 
 Please be aware of the following limitations:
@@ -2809,7 +2887,7 @@ supported.
 Free/Busy feature of Outlook 2013/2016. Please
 see http://support.microsoft.com/kb/291621 for configuration
 instructions. On the SOGo side, _SOGoEnablePublicAccess_ must be set to
-`YES` and the URL to use must be of the following format: 
+`YES` and the URL to use must be of the following format:
 `http://<hostname>/SOGo/dav/public/%NAME%/freebusy.ifb`
 * If you have very large mail folders (thousands of messages), you will
 need to adjust the word size of your IMAP server. In Dovecot, the parameter
@@ -2912,15 +2990,20 @@ SOGoInternalSyncInterval = 60;
 S/MIME Support in SOGo
 ----------------------
 
-SOGo supports S/MIME email signing and encryption. When receiving S/MIME signed emails, SOGo automatically extracts the
-PKCS (Public-Key Cryptography Standard) #7 signature and stores it in the user's personal address book for the contact
-associated to the email address of the email's sender. This certificate will allow the user to send encrypted emails to
-these recipients.
+SOGo supports S/MIME email signing and encryption. When receiving
+S/MIME signed emails, SOGo automatically extracts the PKCS (Public-Key
+Cryptography Standard) #7 signature and stores it in the user's
+personal address book for the contact associated to the email address
+of the email's sender. This certificate will allow the user to send
+encrypted emails to these recipients.
 
-User that wish to send signed emails must upload their certificate in PKCS #12 format. When doing so,
-SOGo will convert the PKCS #12 file into the PEM format and store it in the user's preferences.
+User that wish to send signed emails must upload their certificate in
+PKCS #12 format. When doing so, SOGo will convert the PKCS #12 file
+into the PEM format and store it in the user's preferences.
 
-If you are looking for a free S/MIME certificate from a well-known CA, please have a look at Comodo: https://www.comodo.com/home/email-security/free-email-certificate.php
+If you are looking for a free S/MIME certificate from a well-known CA,
+please have a look at Actalis:
+https://www.actalis.it/products/certificates-for-secure-electronic-mail.aspx
 
 
 Using SOGo
@@ -2979,10 +3062,10 @@ To access your personal calendar:
 `http://127.0.0.1/SOGo/dav/jdoe/Calendar/personal/`
 * Click on Continue.
 
-Apple Calendar and iOS
-~~~~~~~~~~~~~~~~~~~~~~
+Apple Calendar (macOS, iOS, iPadOS)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Apple Calendar and Mac OS X and the calendar application on iOS can also be used
+Apple Calendar on macOS, iOS, and iPadOS can also be used
 as a client application for SOGo.
 
 To configure the application so it works with SOGo, create a new account and specify,
@@ -3035,12 +3118,12 @@ The virtual host should be defined like:
 This configuration is also required if you want to configure a CardDAV
 account on an Apple iOS device (version 4.0 and later).
 
-Microsoft ActiveSync / Mobile Devices
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Microsoft ActiveSync
+~~~~~~~~~~~~~~~~~~~~
 
 You can synchronize contacts, emails, events and tasks from SOGo with
 any mobile devices that support Microsoft ActiveSync. Microsoft Outlook
-2013 is also supported.
+2013/2016 is also supported.
 
 The Microsoft ActiveSync server URL is generally something
 like: `http://127.0.0.1/Microsoft-Server-ActiveSync`.
@@ -3053,6 +3136,15 @@ current version of SOGo from the previous release.
 
 [cols="100a"]
 |=======================================================================
+h|5.0.0
+|Peer is now verified for TLS connections (SMTP/IMAP/Sieve). If you enabled
+TLS on the local machine (localhost and similar), you need to disable peer
+verification by adding `tlsVerifyMode=allowInsecureLocalhost` to the service URL.
+
+h|4.1.0
+|The default port for the SOGoSieveServer default is now 4190 (previously
+2000). You need to explicitly set the port if you use a different port.
+
 h|4.0.0
 |Run the shell script `sql-update-3.2.10_to_4.0.0.sh` or
 `sql-update-3.2.10_to_4.0.0-mysql.sh` (if you are using MySQL).
@@ -3093,7 +3185,7 @@ install -d -m 750 -o sogo -g sogo /etc/sogo
 sudo -u sogo sogo-tool dump-defaults > /etc/sogo/sogo.conf
 chown root:sogo /etc/sogo/sogo.conf
 chmod 640 /etc/sogo/sogo.conf
-sudo -u sogo mv ~/GNUstep/Defaults/.GNUstepDefaults \ 
+sudo -u sogo mv ~/GNUstep/Defaults/.GNUstepDefaults \
     ~/GNUstep/Defaults/GNUstepDefaults.old
 ----
 

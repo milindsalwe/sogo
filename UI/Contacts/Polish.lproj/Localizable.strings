@@ -27,6 +27,9 @@
 "OfficePhone" = "Telefon do biura";
 "Organization" = "Organizacja";
 "Work Phone" = "Telefon do pracy";
+"Cell" = "Komórka";
+"Pager" = "Pager";
+"Pref" = "Pref";
 "Phone" = "Telefon";
 "Phones" = "Telefony";
 "Postal" = "Adres korespondencyjny";
@@ -238,6 +241,12 @@
 = "Nie możesz zrezygnować z subskrypcji foldera, którego jesteś właścicielem.";
 "Unable to subscribe to that folder!"
 = "Nie można włączyć subskrypcji tego foldera.";
+
+/* security */
+"Security" = "Zabezpieczenia";
+"Uninstall" = "Odinstaluj";
+"Error reading the card certificate." = "Błąd odczytu certyfikatu karty.";
+"No certificate associated to card." = "Nie ma certyfikatu powiązanego z tą kartą.";
 
 /* acls */
 "Access rights to" = "Uprawnienia dla";

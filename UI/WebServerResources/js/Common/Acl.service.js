@@ -100,7 +100,7 @@
         _this.users.push(user);
         deferred.resolve(user);
       }, function(data, status) {
-        deferred.reject(l('An error occured please try again.'));
+        deferred.reject(l('An error occured, please try again.'));
       });
     }
     return deferred.promise;
@@ -136,12 +136,15 @@
    * @memberof Acl.prototype
    * @desc Select all rights of an user
    */
-  Acl.prototype.$selectAllRights = function(user) {
-      _.forEach(user.rights, function(value, right) {
-        if (angular.isNumber(user.rights[right]))
-          user.rights[right] = 1;
-        else
-          user.rights[right] = "Modifier";
+  Acl.prototype.$toggleAllRights = function(user) {
+    var unselected = !angular.isUndefined(_.find(_.values(user.rights), function (right) {
+      return (right !== 1) && (right !== "Modifier");
+    }));
+    _.forEach(user.rights, function(value, right) {
+      if (angular.isNumber(user.rights[right]))
+        user.rights[right] = unselected ? 1 : 0;
+      else
+        user.rights[right] = unselected ? "Modifier" : "None";
     });
   };
 

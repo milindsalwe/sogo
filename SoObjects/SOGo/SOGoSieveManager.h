@@ -1,6 +1,6 @@
 /* SOGoSieveManager.h - this file is part of SOGo
  *
- * Copyright (C) 2010-2014 Inverse inc.
+ * Copyright (C) 2010-2019 Inverse inc.
  *
  * Author: Inverse <info@inverse.ca>
  *
@@ -25,6 +25,7 @@
 
 
 @class NSDictionary;
+@class NSException;
 @class NSMutableArray;
 @class NSString;
 @class NGSieveClient;
@@ -41,7 +42,8 @@
 + (id) sieveManagerForUser: (SOGoUser *) user;
 - (id) initForUser: (SOGoUser *) newUser;
 
-- (NSString *) sieveScriptWithRequirements: (NSMutableArray *) newRequirements;
+- (NSString *) sieveScriptWithRequirements: (NSMutableArray *) newRequirements
+                                 delimiter: (NSString *) delimiter;
 - (NSString *) lastScriptError;
 
 - (NGSieveClient *) clientForAccount: (SOGoMailAccount *) theAccount;
@@ -49,10 +51,13 @@
                         withUsername: (NSString *) theUsername
                          andPassword: (NSString *) thePassword;
 
-- (BOOL) updateFiltersForAccount: (SOGoMailAccount *) theAccount;
-- (BOOL) updateFiltersForAccount: (SOGoMailAccount *) theAccount
+- (BOOL) hasActiveExternalSieveScripts: (NGSieveClient *) client;
+
+- (NSException *) updateFiltersForAccount: (SOGoMailAccount *) theAccount;
+- (NSException *) updateFiltersForAccount: (SOGoMailAccount *) theAccount
                     withUsername: (NSString *) theUsername
-                     andPassword: (NSString *) thePassword;
+                     andPassword: (NSString *) thePassword
+                 forceActivation: (BOOL) forceActivation;
 
 @end
 

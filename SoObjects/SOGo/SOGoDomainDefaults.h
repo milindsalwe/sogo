@@ -1,6 +1,6 @@
 /* SOGoDomainDefaults.h - this file is part of SOGo
  *
- * Copyright (C) 2009-2016 Inverse inc.
+ * Copyright (C) 2009-2019 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,14 +44,17 @@
 - (NSString *) imapCASServiceName;
 - (NSString *) imapAclStyle;
 - (NSString *) imapAclGroupIdPrefix;
-- (NSString *) imapFolderSeparator;
 - (BOOL) imapAclConformsToIMAPExt;
 - (BOOL) forceExternalLoginWithEmail;
 - (BOOL) externalAvatarsEnabled;
 - (BOOL) sieveScriptsEnabled;
+- (NSString *) sieveScriptHeaderTemplateFile;
+- (NSString *) sieveScriptFooterTemplateFile;
 - (BOOL) forwardEnabled;
 - (int) forwardConstraints;
+- (NSArray *) forwardConstraintsDomains;
 - (BOOL) vacationEnabled;
+- (BOOL) vacationPeriodEnabled;
 - (NSString *) vacationDefaultSubject;
 - (NSString *) vacationHeaderTemplateFile;
 - (NSString *) vacationFooterTemplateFile;
@@ -74,6 +77,8 @@
 
 - (NSArray *) freeBusyDefaultInterval;
 - (int) davCalendarStartTimeLimit;
+
+- (BOOL) ldapGroupExpansionEnabled;
 
 - (BOOL) iPhoneForceAllDayTransparency;
 

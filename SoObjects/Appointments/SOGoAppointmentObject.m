@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2007-2016 Inverse inc.
+  Copyright (C) 2007-2020 Inverse inc.
 
   This file is part of SOGo
 
@@ -47,13 +47,14 @@
 #import <SOGo/NSObject+DAV.h>
 #import <SOGo/NSString+Utilities.h>
 #import <SOGo/SOGoDateFormatter.h>
-#import <SOGo/SOGoGroup.h>
+#import <SOGo/SOGoUserManager.h>
 #import <SOGo/SOGoUser.h>
 #import <SOGo/SOGoUserSettings.h>
 #import <SOGo/SOGoDomainDefaults.h>
 #import <SOGo/WORequest+SOGo.h>
 
 #import "iCalCalendar+SOGo.h"
+#import "iCalEvent+SOGo.h"
 #import "iCalEventChanges+SOGo.h"
 #import "iCalEntityObject+SOGo.h"
 #import "iCalPerson+SOGo.h"
@@ -187,9 +188,34 @@
     {
       SOGoAppointmentObject *attendeeObject;
       iCalCalendar *iCalendarToSave;
-      
+      iCalPerson *attendee;
+      SOGoUser *user;
+
       iCalendarToSave = nil;
+      user = [SOGoUser userWithLogin: theUID];
       attendeeObject = [self _lookupEvent: [newEvent uid] forUID: theUID];
+      attendee = [newEvent userAsAttendee: user];
+
+      // If the atttende's role is NON-PARTICIPANT, we write nothing to its calendar
+      if ([[attendee role] caseInsensitiveCompare: @"NON-PARTICIPANT"] == NSOrderedSame)
+        {
+          // If the attendee's previous role was not NON-PARTICIPANT we must also delete
+          // the event from its calendar
+          attendee = [oldEvent userAsAttendee: user];
+          if ([[attendee role] caseInsensitiveCompare: @"NON-PARTICIPANT"] != NSOrderedSame)
+            {
+              NSString *currentUID;
+
+              currentUID = [attendee uidInContext: context];
+              if (currentUID)
+                [self _removeEventFromUID: currentUID
+                                    owner: owner
+                         withRecurrenceId: [oldEvent recurrenceId]];
+
+            }
+
+          return;
+        }
 
       if ([newEvent recurrenceId])
         {
@@ -197,12 +223,11 @@
           if ([attendeeObject isNew])
             {
               iCalEvent *ownerEvent;
-              SOGoUser *user;
+
               // We check if the attendee that was added to a single occurence is
               // present in the master component. If not, we create a calendar with
               // a single event for the occurence.
               ownerEvent = [[[newEvent parent] events] objectAtIndex: 0];
-              user = [SOGoUser userWithLogin: theUID];
 
               if (![ownerEvent userAsAttendee: user])
                 {
@@ -339,7 +364,7 @@
             }
         }
       else
-        [self errorWithFormat: @"Unable to find event with UID %@ in %@'s calendar - skipping delete operation", nameInContainer, theUID];
+        [self errorWithFormat: @"Unable to find event with UID %@ in %@'s calendar - skipping delete operation. This can be normal for NON-PARTICIPANT attendees.", nameInContainer, theUID];
     }
 }
 
@@ -677,19 +702,6 @@
 
       for (i = [fbInfo count]-1; i >= 0; i--)
         {
-          // We MUST use the -uniqueChildWithTag method here because the event has been flattened, so its timezone has been
-          // modified in SOGoAppointmentFolder: -fixupCycleRecord: ....
-          rangeStartDate = [[fbInfo objectAtIndex: i] objectForKey: @"startDate"];
-          delta = [[rangeStartDate timeZoneDetail] timeZoneSecondsFromGMT] - [[[(iCalDateTime *)[theEvent uniqueChildWithTag: @"dtstart"] timeZone] periodForDate: [theEvent startDate]] secondsOffsetFromGMT];
-          rangeStartDate = [rangeStartDate dateByAddingYears: 0  months: 0  days: 0  hours: 0  minutes: 0  seconds: delta];
-
-          rangeEndDate = [[fbInfo objectAtIndex: i] objectForKey: @"endDate"];
-          delta = [[rangeEndDate timeZoneDetail] timeZoneSecondsFromGMT] - [[[(iCalDateTime *)[theEvent uniqueChildWithTag: @"dtend"] timeZone] periodForDate: [theEvent endDate]] secondsOffsetFromGMT];
-          rangeEndDate = [rangeEndDate dateByAddingYears: 0  months: 0  days: 0  hours: 0  minutes: 0  seconds: delta];
-
-          range = [NGCalendarDateRange calendarDateRangeWithStartDate: rangeStartDate
-                                                              endDate: rangeEndDate];
-
 	  // We first remove any occurences in the freebusy that corresponds to the
 	  // current event. We do this to avoid raising a conflict if we move a 1 hour
 	  // meeting from 12:00-13:00 to 12:15-13:15. We would overlap on ourself otherwise.
@@ -698,11 +710,32 @@
               [fbInfo removeObjectAtIndex: i];
               continue;
             }
+
+          // Ignore transparent events
+          if (![[[fbInfo objectAtIndex: i] objectForKey: @"c_isopaque"] boolValue])
+            {
+              [fbInfo removeObjectAtIndex: i];
+              continue;
+            }
+
           // No need to check if the event isn't recurrent here as it's handled correctly
           // when we compute the "end" date.
           if ([allOccurences count])
             {
               must_delete = YES;
+
+              // We MUST use the -uniqueChildWithTag method here because the event has been flattened, so its timezone has been
+              // modified in SOGoAppointmentFolder: -fixupCycleRecord: ....
+              rangeStartDate = [[fbInfo objectAtIndex: i] objectForKey: @"startDate"];
+              delta = [[rangeStartDate timeZoneDetail] timeZoneSecondsFromGMT] - [[[(iCalDateTime *)[theEvent uniqueChildWithTag: @"dtstart"] timeZone] periodForDate: [theEvent startDate]] secondsOffsetFromGMT];
+              rangeStartDate = [rangeStartDate dateByAddingYears: 0  months: 0  days: 0  hours: 0  minutes: 0  seconds: delta];
+
+              rangeEndDate = [[fbInfo objectAtIndex: i] objectForKey: @"endDate"];
+              delta = [[rangeEndDate timeZoneDetail] timeZoneSecondsFromGMT] - [[[(iCalDateTime *)[theEvent uniqueChildWithTag: @"dtend"] timeZone] periodForDate: [theEvent endDate]] secondsOffsetFromGMT];
+              rangeEndDate = [rangeEndDate dateByAddingYears: 0  months: 0  days: 0  hours: 0  minutes: 0  seconds: delta];
+
+              range = [NGCalendarDateRange calendarDateRangeWithStartDate: rangeStartDate
+                                                                  endDate: rangeEndDate];
 
               for (j = 0; j < [allOccurences count]; j++)
                 {
@@ -736,13 +769,15 @@
           
           if ([user isResource])
             {
-              // If we always force the auto-accept if numberOfSimultaneousBookings <= 0 (ie., no limit
+              // We always force the auto-accept if numberOfSimultaneousBookings <= 0 (ie., no limit
               // is imposed) or if numberOfSimultaneousBookings is greater than the number of
-              // overlapping events
+              // overlapping events.
+              // When numberOfSimultaneousBookings is set to -1, only force the auto-accept
+              // once the conflict has been raised and the action is forced by the user.
               if ([user numberOfSimultaneousBookings] <= 0 ||
                   [user numberOfSimultaneousBookings] > [fbInfo count])
                 {
-                  if (currentAttendee)
+                  if (currentAttendee && ([user numberOfSimultaneousBookings] >= 0 || forceSave))
                     {
                       [[currentAttendee attributes] removeObjectForKey: @"RSVP"];
                       [currentAttendee setParticipationStatus: iCalPersonPartStatAccepted];
@@ -779,7 +814,7 @@
           // We are dealing with a normal attendee. Lets check if we have conflicts, unless
           // we are being asked to force the save anyway
           //
-          else if (!forceSave)
+          if (!forceSave && !_resourceHasAutoAccepted)
             {
               NSMutableDictionary *info;
               NSMutableArray *conflicts;
@@ -833,7 +868,7 @@
           // set the resource as one!
           [[currentAttendee attributes] removeObjectForKey: @"RSVP"];
           [currentAttendee setParticipationStatus: iCalPersonPartStatAccepted];
-	  _resourceHasAutoAccepted = YES;
+          _resourceHasAutoAccepted = YES;
         }
     }
 
@@ -1162,6 +1197,10 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
   NSString *recurrenceTime, *delegateEmail;
   NSException *error;
   BOOL addDelegate, removeDelegate;
+
+  // If the atttende's role is NON-PARTICIPANT, we write nothing to its calendar
+  if ([[attendee role] caseInsensitiveCompare: @"NON-PARTICIPANT"] == NSOrderedSame)
+    return nil;
 
   error = nil;
 
@@ -1588,7 +1627,7 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
   iCalPerson *attendee;
   NSException *ex;
   SOGoUser *ownerUser, *delegatedUser;
-  NSString *recurrenceTime, *delegatedUid;
+  NSString *recurrenceTime, *delegatedUid, *domain;
 
   event = nil;
   ex = nil;
@@ -1634,10 +1673,15 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
               if ([event isAttendee: [[delegate email] rfc822Email]])
                 ex = [NSException exceptionWithHTTPStatus: 409
                                                    reason: @"delegate is a participant"];
-              else if ([SOGoGroup groupWithEmail: [[delegate email] rfc822Email]
-                                        inDomain: [ownerUser domain]])
-                ex = [NSException exceptionWithHTTPStatus: 409
-                                                   reason: @"delegate is a group"];
+              else {
+                NSDictionary *dict;
+                domain = [[context activeUser] domain];
+                dict = [[SOGoUserManager sharedUserManager] contactInfosForUserWithUIDorEmail: [[delegate email] rfc822Email]
+                                                                                     inDomain: domain];
+                if (dict && [[dict objectForKey: @"isGroup"] boolValue])
+                  ex = [NSException exceptionWithHTTPStatus: 409
+                                                     reason: @"delegate is a group"];
+              }
             }
           if (ex == nil)
             {
@@ -1894,6 +1938,7 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
 {
   NSArray *allEvents;
   iCalEvent *event;
+  iCalTimeZone *tz;
   NSUInteger i;
   int j;
 
@@ -1903,15 +1948,9 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
     {
       event = [allEvents objectAtIndex: i];
 
-      if (![event hasEndDate] && ![event hasDuration])
-        {
-          // No end date, no duration
-          if ([event isAllDay])
-            [event setDuration: @"P1D"];
-          else
-            [event setDuration: @"PT1H"];
-          [self warnWithFormat: @"Invalid event: no end date; setting duration to %@", [event duration]];
-        }
+      tz = [event adjustInContext: context withTimezones: nil];
+      if (tz)
+        [rqCalendar addTimeZone: tz];
 
       if ([event organizer])
         {
@@ -1933,7 +1972,7 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
 	      NSArray *allAttendees;
 
 	      organizerUser = [SOGoUser userWithLogin: uid];
-              defaultIdentity = [organizerUser defaultIdentity];
+              defaultIdentity = [organizerUser primaryIdentity];
 	      organizer = [[event organizer] copy];
               [organizer setCn: [defaultIdentity objectForKey: @"fullName"]];
               [organizer setEmail: [defaultIdentity objectForKey: @"email"]];
@@ -1958,53 +1997,6 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
     }
 }
 
-//
-// This is similar to what we do in SOGoAppointmentFolder: -importCalendar:
-//
-- (void) _adjustFloatingTimeInRequestCalendar: (iCalCalendar *) rqCalendar
-{
-  iCalDateTime *startDate, *endDate;
-  NSString *startDateAsString;
-  SOGoUserDefaults *ud;
-  NSArray *allEvents;
-  iCalTimeZone *tz;
-  iCalEvent *event;
-  int i, delta;
-
-  allEvents = [rqCalendar events];
-  for (i = 0; i < [allEvents count]; i++)
-    {
-      event = [allEvents objectAtIndex: i];
-
-      if ([event isAllDay])
-	continue;
-
-      startDate =  (iCalDateTime *)[event uniqueChildWithTag: @"dtstart"];
-      startDateAsString = [[startDate valuesAtIndex: 0 forKey: @""] objectAtIndex: 0];
-
-      if (![startDate timeZone] &&
-	  ![startDateAsString hasSuffix: @"Z"] &&
-	  ![startDateAsString hasSuffix: @"z"])
-	{
-	  ud = [[context activeUser] userDefaults];
-          tz = [iCalTimeZone timeZoneForName: [ud timeZoneName]];
-          if ([rqCalendar addTimeZone: tz])
-            {
-	      delta = [[tz periodForDate: [startDate dateTime]] secondsOffsetFromGMT];
-
-	      [event setStartDate: [[event startDate] dateByAddingYears: 0  months: 0  days: 0  hours: 0  minutes: 0  seconds: -delta]];
-	      [startDate setTimeZone: tz];
-
-	      endDate = (iCalDateTime *) [event uniqueChildWithTag: @"dtend"];
-	      if (endDate)
-		{
-		  [event setEndDate: [[event endDate] dateByAddingYears: 0  months: 0  days: 0  hours: 0  minutes: 0  seconds: -delta]];
-		  [endDate setTimeZone: tz];
-		}
-            }
-	}
-    }
-}
 
 - (void) _decomposeGroupsInRequestCalendar: (iCalCalendar *) rqCalendar
 {
@@ -2088,21 +2080,6 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
 }
 
 //
-// Let's check if our CalDAV client has sent us a broken SENT-BY. When Lightning is identity-aware,
-// it'll stupidly send something like this:
-// ORGANIZER;RSVP=TRUE;CN=John Doe;PARTSTAT=ACCEPTED;ROLE=CHAIR;SENT-BY="mail
-// to:mailto:sogo3@example.com":mailto:sogo1@example.com
-//
-- (void) _fixupSentByForPerson: (iCalPerson *) person
-{
-  NSString *sentBy;
-
-  sentBy = [person sentBy];
-  if ([sentBy hasPrefix: @"mailto:"])
-    [person setSentBy: [sentBy substringFromIndex: 7]];
-}
-
-//
 // This method is meant to be the common point of any save operation from web
 // and DAV requests, as well as from code making use of SOGo as a library
 // (OpenChange)
@@ -2114,7 +2091,7 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
   NSException *ex;
   NSArray *roles;
 
-  BOOL userIsOrganizer;
+  BOOL ownerIsOrganizer;
 
   if (calendar == fullCalendar || calendar == safeCalendar
                                || calendar == originalCalendar)
@@ -2142,7 +2119,6 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
       [self _adjustEventsInRequestCalendar: calendar];
       [self adjustClassificationInRequestCalendar: calendar];
       [self _adjustPartStatInRequestCalendar: calendar];
-      [self _adjustFloatingTimeInRequestCalendar: calendar];
     }
       
   //
@@ -2169,29 +2145,27 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
       //
       // New event and we're the organizer -- send invitation to all attendees
       //
-      userIsOrganizer = [event userIsOrganizer: ownerUser];
+      ownerIsOrganizer = [event userIsOrganizer: ownerUser];
 
       // We handle the situation where the SOGo Integrator extension isn't installed or
       // if the SENT-BY isn't set. That can happen if Bob invites Alice by creating the event
       // in Annie's calendar. Annie should be the organizer, and Bob the SENT-BY. But most
       // broken CalDAV client that aren't identity-aware will create the event in Annie's calendar
       // and set Bob as the organizer. We fix this for them. See #3368 for details.
-      if (!userIsOrganizer &&
+      if (!ownerIsOrganizer &&
 	  [[context activeUser] hasEmail: [[event organizer] rfc822Email]])
 	{
 	  [[event organizer] setCn: [ownerUser cn]];
 	  [[event organizer] setEmail: [[ownerUser allEmails] objectAtIndex: 0]];
 	  [[event organizer] setSentBy: [NSString stringWithFormat: @"\"MAILTO:%@\"", [[[context activeUser] allEmails] objectAtIndex: 0]]];
-	  userIsOrganizer = YES;
+	  ownerIsOrganizer = YES;
 	}
 
-      if (userIsOrganizer)
+      if (ownerIsOrganizer)
 	{
 	  attendees = [event attendeesWithoutUser: ownerUser];
 	  if ([attendees count])
 	    {
-	      [self _fixupSentByForPerson: [event organizer]];
-
 	      if ((ex = [self _handleAddedUsers: attendees fromEvent: event  force: YES]))
 		return ex;
 	      else
@@ -2289,7 +2263,7 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
       if (!oldEvent && !newEvent)
         {
           // We check if we only have to deal with the MASTER event
-          if ([newEvents count] == [oldEvents count])
+          if ([oldEvents count] && [newEvents count] == [oldEvents count])
             {
               oldEvent = [oldEvents objectAtIndex: 0];
               newEvent = [newEvents objectAtIndex: 0];
@@ -2323,25 +2297,38 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
       //
       if ([[newEvent attendees] count] || [[oldEvent attendees] count])
         {
+          BOOL userIsOrganizer;
+
           // newEvent might be nil here, if we're deleting a RECURRENCE-ID with attendees
           // If that's the case, we use the oldEvent to obtain the organizer
           if (newEvent)
-            userIsOrganizer = [newEvent userIsOrganizer: ownerUser];
+            {
+              ownerIsOrganizer = [newEvent userIsOrganizer: ownerUser];
+              userIsOrganizer = [newEvent userIsOrganizer: [context activeUser]];
+            }
           else
-            userIsOrganizer = [oldEvent userIsOrganizer: ownerUser];
+            {
+              ownerIsOrganizer = [oldEvent userIsOrganizer: ownerUser];
+              userIsOrganizer = [oldEvent userIsOrganizer: [context activeUser]];
+            }
 
 	  // We handle the situation where the SOGo Integrator extension isn't installed or
 	  // if the SENT-BY isn't set. That can happen if Bob invites Alice by creating the event
 	  // in Annie's calendar. Annie should be the organizer, and Bob the SENT-BY. But most
 	  // broken CalDAV client that aren't identity-aware will create the event in Annie's calendar
 	  // and set Bob as the organizer. We fix this for them.  See #3368 for details.
+          //
+          // We also handle the case where Bob invites Alice and Bob has full access to Alice's calendar
+          // After inviting ALice, Bob opens the event in Alice's calendar and accept/declines the event.
+          //
 	  if (!userIsOrganizer &&
+              !ownerIsOrganizer &&
 	      [[context activeUser] hasEmail: [[newEvent organizer] rfc822Email]])
 	    {
 	      [[newEvent organizer] setCn: [ownerUser cn]];
 	      [[newEvent organizer] setEmail: [[ownerUser allEmails] objectAtIndex: 0]];
 	      [[newEvent organizer] setSentBy: [NSString stringWithFormat: @"\"MAILTO:%@\"", [[[context activeUser] allEmails] objectAtIndex: 0]]];
-	      userIsOrganizer = YES;
+	      ownerIsOrganizer = YES;
 	    }
 
           // With Thunderbird 10, if you create a recurring event with an exception
@@ -2351,12 +2338,10 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
           if (!recurrenceId && ![[[[[newEvent parent] events] objectAtIndex: 0] organizer] uidInContext: context])
             [[[[newEvent parent] events] objectAtIndex: 0] setOrganizer: [newEvent organizer]];
 
-          if (userIsOrganizer)
+          if (ownerIsOrganizer)
             {
 	      // We check ACLs of the 'organizer' - in case someone forges the SENT-BY
 	      NSString *uid;
-
-	      [self _fixupSentByForPerson: [newEvent organizer]];
 
 	      uid = [[oldEvent organizer] uidInContext: context];
 
@@ -2368,7 +2353,7 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
 		  roles = [[context activeUser] rolesForObject: organizerObject
 						     inContext: context];
 
-		  if (![roles containsObject: @"ComponentModifier"])
+		  if (![roles containsObject: @"ComponentModifier"] && ![[context activeUser] isSuperUser])
 		    {
 		      return [NSException exceptionWithHTTPStatus: 409
 							   reason: @"Not allowed to perform this action. Wrong SENT-BY being used regarding access rights on organizer's calendar."];
@@ -2381,7 +2366,7 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
               // The master event was changed, A RECCURENCE-ID was added or modified
               else if ((ex = [self _handleUpdatedEvent: newEvent  fromOldEvent: oldEvent  force: YES]))
                 return ex;
-            }
+            } // if (ownerIsOrganizer) ..
           //
           // else => attendee is responding
           //
@@ -2437,7 +2422,8 @@ inRecurrenceExceptionsForEvent: (iCalEvent *) theEvent
               
               if ([delegateEmail length])
                 {
-                  delegateEmail = [delegateEmail substringFromIndex: 7];
+                  if ([[delegateEmail lowercaseString] hasPrefix: @"mailto:"])
+                    delegateEmail = [delegateEmail substringFromIndex: 7];
                   if ([delegateEmail length])
                     delegate = [newEvent findAttendeeWithEmail: delegateEmail];
                 }

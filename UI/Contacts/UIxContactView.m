@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2005-2017 Inverse inc.
+  Copyright (C) 2005-2019 Inverse inc.
 
   This file is part of SOGo.
 
@@ -31,8 +31,10 @@
 #import <SOGo/NSArray+Utilities.h>
 #import <SOGo/NSCalendarDate+SOGo.h>
 #import <SOGo/NSDictionary+Utilities.h>
+#import <SOGo/SOGoSource.h>
 #import <SOGo/SOGoUser.h>
 #import <SOGo/SOGoUserDefaults.h>
+#import <SOGo/SOGoUserManager.h>
 
 #import <Contacts/NGVCard+SOGo.h>
 #import <Contacts/SOGoContactObject.h>
@@ -152,7 +154,8 @@
           url = [NSURL URLWithString: value];
           if (![url scheme] && [value length] > 0)
             url = [NSURL URLWithString: [NSString stringWithFormat: @"http://%@", value]];
-          [attrs setObject: [url absoluteString] forKey: @"value"];
+          if (url)
+            [attrs setObject: [url absoluteString] forKey: @"value"];
 
           [urls addObject: attrs];
         }
@@ -317,9 +320,9 @@
 
   o = [card nickname];
   if (o) [data setObject: o forKey: @"nickname"];
-  o = [card title];
-  if ([o length] > 0)
-    [data setObject: o forKey: @"title"];
+  o = [card titles];
+  if ([o count])
+    [data setObject: [o componentsJoinedByString: @" / "] forKey: @"title"];
   o = [card role];
   if ([o length] > 0)
     [data setObject: o forKey: @"role"];
@@ -383,6 +386,68 @@
 
   return result;
 }
+
+- (id <WOActionResults>) membersAction
+{
+  NSArray *allUsers;
+  NSDictionary *dict;
+  NSEnumerator *emails;
+  NSMutableArray *allUsersData, *allUserEmails;
+  NSMutableDictionary *userData;
+  NSString *email;
+  SOGoObject <SOGoContactObject> *contact;
+  SOGoObject <SOGoSource> *source;
+  SOGoUser *user;
+  id <WOActionResults> result;
+  unsigned int i, max;
+
+  result = nil;
+  contact = [self clientObject];
+  source = [[contact container] source];
+  dict = [source lookupContactEntryWithUIDorEmail: [contact nameInContainer]
+                                         inDomain: nil];
+
+  if ([[dict objectForKey: @"isGroup"] boolValue])
+    {
+      if ([source conformsToProtocol:@protocol(SOGoMembershipSource)])
+        {
+          allUsers = [(id<SOGoMembershipSource>)(source) membersForGroupWithUID: [dict objectForKey: @"c_uid"]];
+          max = [allUsers count];
+          allUsersData = [NSMutableArray arrayWithCapacity: max];
+          for (i = 0; i < max; i++)
+            {
+              user = [allUsers objectAtIndex: i];
+              allUserEmails = [NSMutableArray array];
+              emails = [[user allEmails] objectEnumerator];
+              while ((email = [emails nextObject])) {
+                [allUserEmails addObject: [NSDictionary dictionaryWithObjectsAndKeys:
+                                                          email, @"value", @"work", @"type", nil]];
+              }
+              userData = [NSDictionary dictionaryWithObjectsAndKeys:
+                                       [user loginInDomain], @"c_uid",
+                                       [user cn], @"c_cn",
+                                       allUserEmails, @"emails", nil];
+              [allUsersData addObject: userData];
+            }
+          dict = [NSDictionary dictionaryWithObject: allUsersData forKey: @"members"];
+          result = [self responseWithStatus: 200
+                                  andString: [dict jsonRepresentation]];
+        }
+      else
+        {
+          result = [self responseWithStatus: 403
+                                  andString: @"Group is not expandable"];
+        }
+    }
+  else
+    {
+      result = [self responseWithStatus: 405
+                              andString: @"Contact is not a group"];
+    }
+
+  return result;
+}
+
 
 - (BOOL) hasPhoto
 {

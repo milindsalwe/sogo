@@ -20,6 +20,7 @@
 
 #import <Foundation/NSValue.h>
 
+#import <NGExtensions/NSObject+Logs.h>
 
 #import <SOGo/NSDictionary+Utilities.h>
 #import <SOGo/SOGoPermissions.h>
@@ -137,17 +138,21 @@ _intValueFromHex (NSString *hexString)
       sortedFolderNames = [NSMutableArray arrayWithCapacity: max];
       for (count = max-1; count >= 0; count--)
         {
-          if ([[sortedFolders objectAtIndex: count] isKindOfClass: [NSString class]])
-            {
-              // Calendar no longer exists; remove it from user's "FoldersOrder" setting
-              dirty = YES;
-              [sortedFolders removeObjectAtIndex: count];
-            }
-          else
+          if ([[sortedFolders objectAtIndex: count] isKindOfClass: [SOGoAppointmentFolder class]])
             {
               folder = [sortedFolders objectAtIndex: count];
               folderName = [folder nameInContainer];
-              [sortedFolderNames addObject: folderName];
+              if (folderName)
+                [sortedFolderNames addObject: folderName];
+              else
+                [self errorWithFormat: @"Unexpected entry in FoldersOrder setting: %@", folder];
+            }
+          else
+            {
+              // Calendar no longer exists; remove it from user's "FoldersOrder" setting
+              [self errorWithFormat: @"Invalid folder in FoldersOrder setting: %@", [sortedFolders objectAtIndex: count]];
+              dirty = YES;
+              [sortedFolders removeObjectAtIndex: count];
             }
         }
 
@@ -193,15 +198,14 @@ _intValueFromHex (NSString *hexString)
           allACLs = ([owner isEqualToString: userLogin] ? nil : [folder aclsForUser: userLogin]);
           objectCreator = ([owner isEqualToString: userLogin] || [allACLs containsObject: SOGoRole_ObjectCreator]);
           objectEraser = ([owner isEqualToString: userLogin] || [allACLs containsObject: SOGoRole_ObjectEraser]);
-          acls = [NSDictionary dictionaryWithObjectsAndKeys: [NSNumber numberWithBool: objectCreator], @"objectCreator",
-                                   [NSNumber numberWithBool: objectEraser], @"objectEraser", nil];
-
 
           if ([folder isKindOfClass: [SOGoWebAppointmentFolder class]])
             objectCreator = objectEraser = synchronize = NO;
           else
             synchronize = [folder synchronize];
 
+          acls = [NSDictionary dictionaryWithObjectsAndKeys: [NSNumber numberWithBool: objectCreator], @"objectCreator",
+                                   [NSNumber numberWithBool: objectEraser], @"objectEraser", nil];
           [calendar setObject: acls  forKey: @"acls"];
 
           if ([[folder nameInContainer] isEqualToString: @"personal"])

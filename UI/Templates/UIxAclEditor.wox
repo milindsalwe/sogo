@@ -7,12 +7,16 @@
     xmlns:label="OGo:label"
     >
   <md-dialog flex="50" flex-sm="80" flex-xs="100">
-    <md-toolbar ng-class="::acl.folderClassName()">
+    <md-toolbar>
       <div class="md-toolbar-tools">
         <md-icon class="material-icons sg-icon-toolbar-bg">folder_shared</md-icon>
         <div class="pseudo-input-container md-flex">
           <label class="pseudo-input-label"><var:string label:value="Access Rights"/></label>
-          <div class="sg-md-title">{{acl.folder.name}}</div>
+          <div layout="row" layout-align="start center">
+            <div class="sg-color-chip"
+                 ng-show="::acl.folderClassName()" ng-class="::acl.folderClassName()"><!-- color --></div>
+            <div class="sg-md-title" ng-bind="::acl.folder.name"><!-- calendar --></div>
+          </div>
         </div>
         <md-button class="md-icon-button" ng-click="acl.closeModal()">
           <md-icon aria-label="Close dialog">close</md-icon>
@@ -30,7 +34,7 @@
             md-selected-item-change="acl.addUser(user)"
             md-items="user in acl.userFilter(acl.searchText)"
             md-item-text="user.empty"
-            md-min-length="3"
+            var:md-min-length="minimumSearchLength"
             md-delay="300"
             md-no-cache="true"
             label:md-floating-label="Add User">
@@ -62,7 +66,7 @@
               <div class="sg-md-body"><div ng-bind="::user.c_email"><!-- email --></div></div>
             </div>
 	    <md-button class="md-icon-button md-secondary" type="button"
-                       ng-click="acl.selectAllRights(user)"
+                       ng-click="acl.toggleAllRights(user)"
                        ng-hide="!acl.showRights(user) || user.$isSpecial()">
               <md-icon>select_all</md-icon>
             </md-button>
@@ -71,6 +75,7 @@
                        ng-hide="user.uid != acl.selectedUid || user.$isSpecial()">
               <md-icon>delete</md-icon>
             </md-button>
+            <md-icon ng-class="{ 'md-rotate-180': acl.showRights(user) }">expand_more</md-icon>
           </div>
         </a>
         <md-card-content id="AccessRightList" ng-show="acl.showRights(user)">

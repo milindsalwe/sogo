@@ -53,7 +53,11 @@
           key: hotkey,
           description: l('Delete selected message or folder'),
           callback: function() {
-            if (Mailbox.selectedFolderController && Mailbox.selectedFolder && Mailbox.selectedFolder.$isEditable && !Mailbox.selectedFolder.hasSelectedMessage())
+            if (Mailbox.selectedFolderController &&
+                Mailbox.selectedFolder &&
+                Mailbox.selectedFolder.$isEditable &&
+                !Mailbox.selectedFolder.hasSelectedMessage() &&
+                Mailbox.selectedFolder.$selectedCount() === 0)
               Mailbox.selectedFolderController.confirmDelete(Mailbox.selectedFolder);
           }
         }));
@@ -249,7 +253,7 @@
 
         function removeUser(user) {
           account.$removeDelegate(user.uid).catch(function(data, status) {
-            Dialog.alert(l('Warning'), l('An error occured please try again.'));
+            Dialog.alert(l('Warning'), l('An error occured, please try again.'));
           });
         }
 
@@ -267,26 +271,39 @@
     }; // delegate
 
     this.refreshUnseenCount = function() {
-      var unseenCountFolders = $window.unseenCountFolders, refreshViewCheck;
+      var unseenCountFolders, refreshViewCheck;
+
+      if (Preferences.defaults.SOGoMailFetchAllUnseenCountFolders === 1)
+        unseenCountFolders = [];
+      else
+        unseenCountFolders = $window.unseenCountFolders;
 
       _.forEach(vm.accounts, function(account) {
-
-        // Always include the INBOX
-        if (!_.includes(unseenCountFolders, account.id + '/folderINBOX'))
-          unseenCountFolders.push(account.id + '/folderINBOX');
-
-        _.forEach(account.$$flattenMailboxes, function(mailbox) {
-          if (angular.isDefined(mailbox.unseenCount) &&
-              !_.includes(unseenCountFolders, mailbox.id))
+        if (Preferences.defaults.SOGoMailFetchAllUnseenCountFolders === 1) {
+          // Include all mailboxes
+          _.forEach(account.$$flattenMailboxes, function(mailbox) {
             unseenCountFolders.push(mailbox.id);
-        });
+          });
+        }
+        else {
+          // Always include the INBOX
+          if (!_.includes(unseenCountFolders, account.id + '/folderINBOX'))
+            unseenCountFolders.push(account.id + '/folderINBOX');
+
+          _.forEach(account.$$flattenMailboxes, function(mailbox) {
+            if (angular.isDefined(mailbox.unseenCount) &&
+                !_.includes(unseenCountFolders, mailbox.id))
+              unseenCountFolders.push(mailbox.id);
+          });
+        }
       });
 
       Account.$$resource.post('', 'unseenCount', {mailboxes: unseenCountFolders}).then(function(data) {
         _.forEach(vm.accounts, function(account) {
           _.forEach(account.$$flattenMailboxes, function(mailbox) {
-            if (data[mailbox.id])
+            if (data[mailbox.id]) {
               mailbox.unseenCount = data[mailbox.id];
+            }
           });
         });
       });
@@ -324,7 +341,7 @@
           $state.go('mail.account.mailbox');
         $mdToast.show(
           $mdToast.simple()
-            .content(success)
+            .textContent(success)
             .position('top right')
             .hideDelay(2000));
       });

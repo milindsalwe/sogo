@@ -119,7 +119,7 @@
           NSString *subject, *issuer;
 	  X509 *x;
 	  
-	  certs = p7->d.sign->cert;
+	  certs = PKCS7_get0_signers(p7, NULL, 0);
 
           for (i = 0; i < sk_X509_num(certs); i++)
             {
@@ -173,15 +173,15 @@
 	  ERR_load_crypto_strings();
           SSL_load_error_strings();
           sslError = ERR_reason_error_string(err);
-          validationMessage = [[self labelForKey: [NSString stringWithUTF8String: sslError ? sslError : @"No error information available"]] retain];
+          validationMessage = [[self labelForKey: [NSString stringWithUTF8String: sslError ? sslError : @"Digital signature is not valid"]] retain];
 #elif OPENSSL_VERSION_NUMBER < 0x10100000L
           const char* sslError;
 	  ERR_load_crypto_strings();
           SSL_load_error_strings();
           sslError = ERR_reason_error_string(err);
-          validationMessage = [[self labelForKey: [NSString stringWithUTF8String: sslError ? sslError : @"No error information available"]] retain];
+          validationMessage = [[self labelForKey: [NSString stringWithUTF8String: sslError ? sslError : @"Digital signature is not valid"]] retain];
 #else
-	  validationMessage = [[self labelForKey: @"No error information available"] retain];
+	  validationMessage = [[self labelForKey: @"Digital signature is not valid"] retain];
 #endif /* HAVE_GNUTLS */
       }
     }

@@ -106,6 +106,9 @@
           this.editMode = false;
         }
       }
+      else {
+        this.revertEditing(folder);
+      }
     };
 
     this.confirmDelete = function () {
@@ -184,7 +187,7 @@
 
             $mdToast.show(
               $mdToast.simple()
-                .content(msg)
+                .textContent(msg)
                 .position('top right')
                 .hideDelay(3000));
           },
@@ -332,7 +335,7 @@
       AddressBook.$subscribe(addressbookData.owner, addressbookData.name).then(function(data) {
          $mdToast.show(
            $mdToast.simple()
-             .content(l('Successfully subscribed to address book'))
+             .textContent(l('Successfully subscribed to address book'))
              .position('top right')
              .hideDelay(3000));
       });
@@ -360,7 +363,7 @@
       if (cards.length != allCards.length)
         $mdToast.show(
           $mdToast.simple()
-            .content(l("Lists can't be moved or copied."))
+            .textContent(l("Lists can't be moved or copied."))
             .position('top right')
             .hideDelay(2000));
 
@@ -383,7 +386,7 @@
             $state.go('app.addressbook');
           $mdToast.show(
             $mdToast.simple()
-              .content(success)
+              .textContent(success)
               .position('top right')
               .hideDelay(2000));
         });

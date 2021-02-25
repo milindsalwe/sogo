@@ -38,9 +38,10 @@
    * @desc The factory we'll use to register with Angular.
    * @returns the Card constructor
    */
-  Card.$factory = ['$q', '$timeout', 'sgSettings', 'sgCard_STATUS', 'Resource', 'Preferences', function($q, $timeout, Settings, Card_STATUS, Resource, Preferences) {
+  Card.$factory = ['$q', '$timeout', 'sgSettings', 'sgCard_STATUS', 'encodeUriFilter', 'Resource', 'Preferences', function($q, $timeout, Settings, Card_STATUS, encodeUriFilter, Resource, Preferences) {
     angular.extend(Card, {
       STATUS: Card_STATUS,
+      encodeUri: encodeUriFilter,
       $$resource: new Resource(Settings.activeUser('folderURL') + 'Contacts', Settings.activeUser()),
       $q: $q,
       $timeout: $timeout,
@@ -143,6 +144,8 @@
       this.categories = [];
     this.c_screenname = null;
     angular.extend(this, data);
+    if (!this.pid)
+      this.pid = this.container;
     if (!this.$$fullname)
       this.$$fullname = this.$fullname();
     if (!this.$$email)
@@ -150,7 +153,7 @@
     if (!this.$$image)
       this.$$image = this.image;
     if (!this.$$image)
-      this.$$image = Card.$Preferences.avatar(this.$$email, 32, {no_404: true});
+      this.$$image = Card.$Preferences.avatar(this.$$email, 40, {no_404: true});
     if (this.hasphoto)
       this.photoURL = Card.$$resource.path(this.pid, this.id, 'photo');
     if (this.isgroup)
@@ -200,6 +203,16 @@
   };
 
   /**
+   * @function $path
+   * @memberof Card.prototype
+   * @desc Return the relative URL of the card.
+   * @returns the relative URL, properly encoded
+   */
+  Card.prototype.$path = function() {
+    return [this.pid, this.id];
+  };
+
+  /**
    * @function $isLoading
    * @memberof Card.prototype
    * @returns true if the Card definition is still being retrieved from server after a specific delay
@@ -211,19 +224,43 @@
 
   /**
    * @function $reload
-   * @memberof Message.prototype
-   * @desc Fetch the viewable message body along with other metadata such as the list of attachments.
+   * @memberof Card.prototype
+   * @desc Fetch all available attributes of the contact.
    * @returns a promise of the HTTP operation
    */
   Card.prototype.$reload = function() {
-    var futureCardData;
+    var _this = this, futureCardData;
 
     if (this.$futureCardData)
       return this;
 
-    futureCardData = Card.$$resource.fetch([this.pid, this.id].join('/'), 'view');
+    futureCardData = Card.$$resource.fetch(this.$path(), 'view');
 
     return this.$unwrap(futureCardData);
+  };
+
+  /**
+   * @function $members
+   * @memberof Card.prototype
+   * @desc Fetch members of the LDAP group.
+   * @returns a promise that resolves with the members
+   */
+  Card.prototype.$members = function() {
+    var _this = this;
+
+    if (this.members)
+      return Card.$q.when(this.members);
+
+    if (this.$isGroup({expandable: true})) {
+      return Card.$$resource.fetch(this.$path(), 'members').then(function(data) {
+        _this.members = _.map(data.members, function(member) {
+          return new Card(member);
+        });
+        return _this.members;
+      });
+    }
+
+    return Card.$q.reject("Card " + this.id + " is not an LDAP group");
   };
 
   /**
@@ -242,7 +279,10 @@
       });
     }
 
-    return Card.$$resource.save([this.pid, this.id || '_new_'].join('/'),
+    return Card.$$resource.save([
+      Card.encodeUri(this.pid),
+      Card.encodeUri(this.id) || '_new_'
+    ].join('/'),
                                 this.$omit(),
                                 { action: action })
       .then(function(data) {
@@ -265,7 +305,7 @@
     }
     else {
       // No arguments -- delete card
-      return Card.$$resource.remove([this.pid, this.id].join('/'));
+      return Card.$$resource.remove(this.$path());
     }
   };
 
@@ -383,9 +423,14 @@
   };
 
   Card.prototype.$isList = function(options) {
-    // isGroup attribute means it's a group of a LDAP source (not expandable on the client-side)
+    // isGroup attribute means it's a group of a LDAP source (not automatically expanded on the client-side)
     var condition = (!options || !options.expandable || options.expandable && !this.isgroup);
     return this.c_component == 'vlist' && condition;
+  };
+
+  Card.prototype.$isGroup = function(options) {
+    var condition = (!options || !options.expandable || options.expandable && Card.$Preferences.defaults.SOGoLDAPGroupExpansionEnabled);
+    return this.isgroup && condition;
   };
 
   Card.prototype.$addOrg = function(org) {
@@ -499,7 +544,7 @@
       if (this.$$certificate)
         return Card.$q.when(this.$$certificate);
       else {
-        return Card.$$resource.fetch([this.pid, this.id].join('/'), 'certificate').then(function(data) {
+        return Card.$$resource.fetch(this.$path(), 'certificate').then(function(data) {
           _this.$$certificate = data;
           return data;
         });
@@ -519,7 +564,7 @@
   Card.prototype.$removeCertificate = function() {
     var _this = this;
 
-    return Card.$$resource.fetch([this.pid, this.id].join('/'), 'removeCertificate').then(function() {
+    return Card.$$resource.fetch(this.$path(), 'removeCertificate').then(function() {
       _this.hasCertificate = false;
     });
   };

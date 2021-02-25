@@ -1,6 +1,6 @@
 /* SOGoToolUpdateAutoReply.m - this file is part of SOGo
  *
- * Copyright (C) 2011-2016 Inverse inc.
+ * Copyright (C) 2011-2019 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@
 #import <GDLContentStore/GCSChannelManager.h>
 #import <GDLContentStore/NSURL+GCS.h>
 
+#import <NGExtensions/NSCalendarDate+misc.h>
 #import <NGExtensions/NSNull+misc.h>
 
 #import <NGObjWeb/WOContext+SoObjects.h>
@@ -81,8 +82,10 @@
   SOGoUserDefaults *userDefaults;
   SOGoUser *user;
   BOOL result;
+  NSException *error;
 
   user = [SOGoUser userWithLogin: theLogin];
+
   userDefaults = [user userDefaults];
   vacationOptions = [[userDefaults vacationOptions] mutableCopy];
   [vacationOptions autorelease];
@@ -93,6 +96,14 @@
     }
   else
     {
+      // We do NOT enable the vacation message automatically if the domain
+      // preference is disabled by default.
+      if (![[user domainDefaults] vacationPeriodEnabled])
+        {
+          NSLog(@"SOGoVacationPeriodEnabled set to NO for the domain - ignoring.");
+          return NO;
+        }
+
       [vacationOptions setObject: [NSNumber numberWithBool: NO] forKey: @"startDateEnabled"];
     }
 
@@ -118,8 +129,10 @@
       account = [folder lookupName: @"0" inContext: localContext acquire: NO];
       [account setContext: localContext];
 
-      result = [account updateFiltersWithUsername: theUsername  andPassword: thePassword];
-      if (!result)
+      error = [account updateFiltersWithUsername: theUsername
+                                      andPassword: thePassword
+                                  forceActivation: NO];
+      if (error)
         {
           // Can't update Sieve script -- Reactivate auto-reply
 	  if (disabling)
@@ -128,6 +141,7 @@
 	    [vacationOptions setObject: [NSNumber numberWithBool: YES] forKey: @"startDateEnabled"];
           [userDefaults setVacationOptions: vacationOptions];
           [userDefaults synchronize];
+          result = NO;
         }
     }
 
@@ -144,9 +158,9 @@
   NSString *sql, *profileURL, *user, *c_defaults;
   NSURL *tableURL;
   SOGoSystemDefaults *sd;
-  unsigned int endTime, startTime, now;
+  unsigned int now, endTime, startTime;
 
-  now = [[NSCalendarDate calendarDate] timeIntervalSince1970];
+  now = [[[NSCalendarDate calendarDate] beginOfDay] timeIntervalSince1970];
   sd = [SOGoSystemDefaults sharedSystemDefaults];
   profileURL = [sd profileURL];
   if (!profileURL)
@@ -199,7 +213,7 @@
                       if ([[vacationOptions objectForKey: @"endDateEnabled"] boolValue])
                         {
                           endTime = [[vacationOptions objectForKey: @"endDate"] intValue];
-                          if (endTime <= now)
+                          if (endTime < now)
                             {
                               if ([self updateAutoReplyForLogin: user
 					      withSieveUsername: theUsername

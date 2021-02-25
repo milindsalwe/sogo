@@ -107,6 +107,7 @@
 "Name of the Calendar" = "Nome deste Calendário";
 "new" = "Novo";
 "Print view" = "Visualização de Impressão";
+"Print" = "Imprimir";
 "edit" = "Editar";
 "delete" = "Apagar";
 "proposal" = "Proposta";
@@ -147,6 +148,7 @@
 "Display events and tasks colors" = "Exibir eventos e tarefas com cores";
 "Borders" = "Fronteiras";
 "Backgrounds" = "Segundo plano";
+"Page Format" = "Formato da página";
 
 /* Appointments */
 "Appointment viewer" = "Visualizador de Compromissos";
@@ -440,15 +442,45 @@ validate_untilbeforeend    = "A recorrência deve terminar após a primeira ocor
 "Are you sure you want to delete the selected components?"
 = "Tem certeza de que deseja excluir os componentes selecionados?";
 
-/* Legend */
+/* Participation role */
+"Role" = "Função";
+
+/* Participant role: participation is required */
 "Participant" = "Participante";
+
+/* Participant role: participation is required */
+"req-participant" = "Participante";
+
+/* Participant role: participation is optional */
 "Optional Participant" = "Participante Opcional";
+
+/* Participant role: participation is optional */
+"opt-participant" = "Participante Opcional";
+
+/* Participant role: participant is copied for information purposes only */
 "Non Participant" = "Não Participante";
+
+/* Participant role: participant is copied for information purposes only */
+"non-participant" = "Não Participante";
+
+/* Participant role: participant is chair of the calendar entity */
 "Chair" = "Cadeira";
+
+/* Participant role: participant is chair of the calendar entity */
+"chair" = "Cadeira";
+
+/* Participant status: needs action */
 "Needs action" = "Ações necessárias";
+
+/* Participant status: event accepted */
 "Accepted" = "Aceitado";
+
+/* Participant status: event declined */
 "Declined" = "Declinado";
+
+/* Participant status: tentatively accepted */
 "Tentative" = "Tentativa";
+
 "Free" = "Livre";
 "Busy" = "Ocupado";
 "Maybe busy" = "Talvez ocupado";

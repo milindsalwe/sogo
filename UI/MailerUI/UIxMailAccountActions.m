@@ -1,6 +1,6 @@
 /* UIxMailAccountActions.m - this file is part of SOGo
  *
- * Copyright (C) 2007-2017 Inverse inc.
+ * Copyright (C) 2007-2020 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -50,6 +50,7 @@
 #import <Mailer/SOGoDraftObject.h>
 #import <Mailer/SOGoDraftsFolder.h>
 #import <SOGo/NSArray+Utilities.h>
+#import <SOGo/NSDictionary+Utilities.h>
 #import <SOGo/NSObject+Utilities.h>
 #import <SOGo/NSString+Utilities.h>
 #import <SOGo/SOGoDomainDefaults.h>
@@ -98,18 +99,34 @@
 
 /* compose */
 
+- (NSString *) _emailFromIdentity: (NSDictionary *) identity
+{
+  NSString *fullName, *format;
+
+  fullName = [identity objectForKey: @"fullName"];
+  if ([fullName length])
+    format = @"%{fullName} <%{email}>";
+  else
+    format = @"%{email}";
+
+  return [identity keysWithFormat: format];
+}
+
 - (WOResponse *) composeAction
 {
-  NSString *value, *signature, *nl;
-  SOGoDraftObject *newDraftMessage;
+  BOOL save, isHTML;
+  NSDictionary *data, *identity;
   NSMutableDictionary *headers;
-  NSDictionary *data;
   NSString *accountName, *mailboxName, *messageName;
+  NSString *value, *signature, *nl, *space;
+  SOGoDraftObject *newDraftMessage;
   SOGoDraftsFolder *drafts;
+  SOGoMailAccount *co;
+  SOGoUserDefaults *ud;
   id mailTo;
-  BOOL save;
 
-  drafts = [[self clientObject] draftsFolderInContext: context];
+  co = [self clientObject];
+  drafts = [co draftsFolderInContext: context];
   newDraftMessage = [drafts newDraft];
   headers = [NSMutableDictionary dictionary];
 
@@ -133,22 +150,30 @@
       save = YES;
     }
 
-  if (save)
-    [newDraftMessage setHeaders: headers];
-
-  signature = [[self clientObject] signature];
-  if ([signature length])
+  identity = [co defaultIdentity];
+  if (identity)
     {
-      nl = ([[[[context activeUser] userDefaults] mailComposeMessageType] isEqualToString: @"html"] ? @"<br/>" : @"\n");
-
-      [newDraftMessage
-        setText: [NSString stringWithFormat: @"%@%@-- %@%@", nl, nl, nl, signature]];
+      [headers setObject: [self _emailFromIdentity: identity] forKey: @"from"];
+      signature = [identity objectForKey: @"signature"];
+      if ([signature length])
+        {
+          ud = [[context activeUser] userDefaults];
+          [newDraftMessage setIsHTML: [[ud mailComposeMessageType] isEqualToString: @"html"]];
+          isHTML = [newDraftMessage isHTML];
+          nl = (isHTML? @"<br />" : @"\n");
+          space = (isHTML ? @"&nbsp;" : @" ");
+          [newDraftMessage setText: [NSString stringWithFormat: @"%@%@--%@%@%@", nl, nl, space, nl, signature]];
+        }
       save = YES;
     }
-  if (save)
-    [newDraftMessage storeInfo];
 
-  accountName = [[self clientObject] nameInContainer];
+  if (save)
+    {
+      [newDraftMessage setHeaders: headers];
+      [newDraftMessage storeInfo];
+    }
+
+  accountName = [co nameInContainer];
   mailboxName = [drafts absoluteImap4Name]; // Ex: /INBOX/Drafts/
   mailboxName = [mailboxName substringWithRange: NSMakeRange(1, [mailboxName length] -2)];
   messageName = [newDraftMessage nameInContainer];
@@ -281,6 +306,7 @@
   if (password && pkcs12)
     {
       NSData *certificate;
+      NSDictionary *description;
 
       certificate = [pkcs12 convertPKCS12ToPEMUsingPassword: password];
 
@@ -289,7 +315,18 @@
 
       [[self clientObject] setCertificate: certificate];
 
-      response = [self responseWith204];
+      description = [certificate certificateDescription];
+      if (description)
+        {
+          response = [self responseWithStatus: 200  andJSONRepresentation: description];
+        }
+      else
+        {
+          description = [NSDictionary
+                          dictionaryWithObject: [self labelForKey: @"Error reading the certificate. Please install a new certificate."]
+                                        forKey: @"message"];
+          response = [self responseWithStatus: 500  andJSONRepresentation: description];
+        }
     }
 
   return response;

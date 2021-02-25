@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2007-2016 Inverse inc.
+  Copyright (C) 2007-2021 Inverse inc.
 
   This file is part of SOGo.
 
@@ -92,7 +92,7 @@ static NSString *inboxFolderName = @"INBOX";
   [otherUsersFolderName release];
   [sharedFoldersName release];
   [subscribedFolders release];
-  [super dealloc];  
+  [super dealloc];
 }
 
 - (BOOL) isInDraftsFolder
@@ -135,7 +135,7 @@ static NSString *inboxFolderName = @"INBOX";
   if (namespace)
     {
       [self _appendNamespace: namespace toFolders: folders];
-      ASSIGN(otherUsersFolderName, [folders lastObject]);     
+      ASSIGN(otherUsersFolderName, [folders lastObject]);
     }
 
   namespace = [namespaceDict objectForKey: @"shared"];
@@ -275,7 +275,7 @@ static NSString *inboxFolderName = @"INBOX";
   SOGoDomainDefaults *dd;
   id inboxQuota, infos;
   float quota;
-  
+
   inboxQuota = nil;
   if ([self supportsQuotas])
     {
@@ -300,19 +300,32 @@ static NSString *inboxFolderName = @"INBOX";
   return inboxQuota;
 }
 
-- (BOOL) updateFilters
+- (NSException *) updateFiltersAndForceActivation: (BOOL) forceActivation
 {
-  return [self updateFiltersWithUsername: nil andPassword: nil];
+  return [self updateFiltersWithUsername: nil
+                             andPassword: nil
+                         forceActivation: forceActivation];
 }
 
-- (BOOL) updateFiltersWithUsername: (NSString *) theUsername
+- (NSException *) updateFilters
+{
+  return [self updateFiltersWithUsername: nil
+                             andPassword: nil
+                         forceActivation: NO];
+}
+
+- (NSException *) updateFiltersWithUsername: (NSString *) theUsername
                        andPassword: (NSString *) thePassword
+                   forceActivation: (BOOL) forceActivation
 {
   SOGoSieveManager *manager;
 
   manager = [SOGoSieveManager sieveManagerForUser: [context activeUser]];
 
-  return [manager updateFiltersForAccount: self  withUsername: theUsername  andPassword: thePassword];
+  return [manager updateFiltersForAccount: self
+                             withUsername: theUsername
+                              andPassword: thePassword
+                          forceActivation: forceActivation];
 }
 
 
@@ -533,13 +546,18 @@ static NSString *inboxFolderName = @"INBOX";
                    && [currentFolderName caseInsensitiveCompare: sharedFoldersName] == NSOrderedSame)
 	    currentFolderName = [self labelForKey: @"SharedFoldersName"];
 
-          flags = [NSMutableArray array];;
+          flags = [NSMutableArray array];
 
           if (last)
-            folderType = [self _folderType: currentPath
-                                     flags: flags];
+            {
+              folderType = [self _folderType: currentPath
+                                       flags: flags];
+            }
           else
-            folderType = @"additional";
+            {
+              folderType = @"additional";
+              [flags addObject: @"noselect"];
+            }
 
 	  if ([subscribedFolders objectForKey: folderPath])
 	    isSubscribed = YES;
@@ -654,13 +672,66 @@ static NSString *inboxFolderName = @"INBOX";
   return identities;
 }
 
+- (NSDictionary *) defaultIdentity
+{
+  NSDictionary *defaultIdentity, *currentIdentity;
+  unsigned int count, max;
+
+  defaultIdentity = nil;
+  [self identities];
+
+  max = [identities count];
+  for (count = 0; count < max; count++)
+    {
+      currentIdentity = [identities objectAtIndex: count];
+      if ([[currentIdentity objectForKey: @"isDefault"] boolValue])
+        {
+          defaultIdentity = currentIdentity;
+          break;
+        }
+    }
+
+  return defaultIdentity; // can be nil
+}
+
+- (BOOL) forceDefaultIdentity
+{
+  return [[[self _mailAccount] objectForKey: @"forceDefaultIdentity"] boolValue];
+}
+
+- (NSDictionary *) identityForEmail: (NSString *) email
+{
+  NSDictionary *identity, *currentIdentity;
+  NSString *currentEmail;
+  unsigned int count, max;
+
+  identity = nil;
+  [self identities];
+
+  max = [identities count];
+  for (count = 0; count < max; count++)
+    {
+      currentIdentity = [identities objectAtIndex: count];
+      currentEmail = [currentIdentity objectForKey: @"email"];
+      if ([currentEmail caseInsensitiveCompare: email] == NSOrderedSame)
+        {
+          identity = currentIdentity;
+          break;
+        }
+    }
+
+  return identity; // can be nil
+}
+
 - (NSString *) signature
 {
+  NSDictionary *identity;
   NSString *signature;
 
-  [self identities];
-  if ([identities count] > 0)
-    signature = [[identities objectAtIndex: 0] objectForKey: @"signature"];
+  identity = [self defaultIdentity];
+
+  if (identity)
+    signature = [identity objectForKey: @"signature"];
   else
     signature = nil;
 
@@ -676,6 +747,17 @@ static NSString *inboxFolderName = @"INBOX";
     encryption = @"none";
 
   return encryption;
+}
+
+- (NSString *) tlsVerifyMode
+{
+  NSString *verifyMode;
+
+  verifyMode = [[self _mailAccount] objectForKey: @"tlsVerifyMode"];
+  if (!verifyMode || ![verifyMode length])
+    verifyMode = @"default";
+
+  return verifyMode;
 }
 
 - (NSMutableString *) imap4URLString
@@ -763,7 +845,7 @@ static NSString *inboxFolderName = @"INBOX";
   NSEnumerator *e;
   NSString *guid;
   id currentFolder;
-  
+
   BOOL hasAnnotatemore;
 
   ud = [[context activeUser] userDefaults];
@@ -788,7 +870,7 @@ static NSString *inboxFolderName = @"INBOX";
     result = [client annotation: @"*"  entryName: @"/comment" attributeName: @"value.priv"];
   else
     result = [client lstatus: @"*" flags: [NSArray arrayWithObjects: @"x-guid", nil]];
-  
+
   e = [folderList objectEnumerator];
 
   while ((currentFolder = [[e nextObject] substringFromIndex: 1]))
@@ -797,7 +879,7 @@ static NSString *inboxFolderName = @"INBOX";
         guid = [[[[result objectForKey: @"FolderList"] objectForKey: currentFolder] objectForKey: @"/comment"] objectForKey: @"value.priv"];
       else
         guid = [[[result objectForKey: @"status"] objectForKey: currentFolder] objectForKey: @"x-guid"];
-      
+
       if (!guid || ![guid isNotNull])
         {
           // Don't generate a GUID for "Other users" and "Shared" namespace folders - user foldername instead
@@ -809,12 +891,13 @@ static NSString *inboxFolderName = @"INBOX";
           // * LIST (\NonExistent \HasChildren) "/" shared/jdoe@example.com
           // * LIST (\HasNoChildren) "/" shared/jdoe@example.com/INBOX
           else if (!hasAnnotatemore &&
-		   ([[[result objectForKey: @"list"] objectForKey: currentFolder] indexOfObject: @"nonexistent"] != NSNotFound &&
+		   (([[[result objectForKey: @"list"] objectForKey: currentFolder] indexOfObject: @"nonexistent"] != NSNotFound ||
+                     [[[result objectForKey: @"list"] objectForKey: currentFolder] indexOfObject: @"noselect"] != NSNotFound)&&
 		    [[[result objectForKey: @"list"] objectForKey: currentFolder] indexOfObject: @"haschildren"] != NSNotFound))
             guid = [NSString stringWithFormat: @"%@", currentFolder];
           else
             {
-              // If folder doesn't exists - ignore it. 
+              // If folder doesn't exists - ignore it.
               nresult = [client status: currentFolder
                                  flags: [NSArray arrayWithObject: @"UIDVALIDITY"]];
               if (![[nresult valueForKey: @"result"] boolValue])
@@ -830,10 +913,10 @@ static NSString *inboxFolderName = @"INBOX";
                guid = [NSString stringWithFormat: @"%@", currentFolder];
             }
         }
-      
+
       [folders setObject: [NSString stringWithFormat: @"folder%@", guid] forKey: [NSString stringWithFormat: @"folder%@", currentFolder]];
     }
-  
+
   return folders;
 }
 
@@ -897,7 +980,7 @@ static NSString *inboxFolderName = @"INBOX";
     }
   else
     obj = [super lookupName: _key inContext: _ctx acquire: NO];
-  
+
   /* return 404 to stop acquisition */
   if (!obj)
     obj = [NSException exceptionWithHTTPStatus: 404 /* Not Found */];
@@ -1157,7 +1240,7 @@ static NSString *inboxFolderName = @"INBOX";
           if (delegateUser)
             [delegateUser removeMailDelegator: owner];
         }
-      
+
       [self _setDelegates: delegates];
     }
 }

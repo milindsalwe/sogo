@@ -13,10 +13,16 @@
     if (typeof futureAccountData.then !== 'function') {
       angular.extend(this, futureAccountData);
       _.forEach(this.identities, function(identity) {
-        if (identity.fullName)
+        if (identity.fullName && identity.email)
           identity.full = identity.fullName + ' <' + identity.email + '>';
-        else
+        else if (identity.email)
           identity.full = '<' + identity.email + '>';
+        else
+          identity.full = '';
+        if (identity.signature) {
+          var element = angular.element('<div>' + identity.signature + '</div>');
+          identity.textSignature = _.map(element.contents(), 'textContent').join(' ').trim();
+        }
       });
       Account.$log.debug('Account: ' + JSON.stringify(futureAccountData, undefined, 2));
     }
@@ -65,12 +71,17 @@
    * @returns the list of accounts
    */
   Account.$findAll = function(data) {
-    if (!data) {
+    if (data) {
+      return Account.$unwrapCollection(data);
+    }
+    else if (Account.$accounts) {
+      return Account.$q.when(Account.$accounts);
+    }
+    else {
       return Account.$$resource.fetch('', 'mailAccounts').then(function(o) {
         return Account.$unwrapCollection(o);
       });
     }
-    return Account.$unwrapCollection(data);
   };
 
   /**
@@ -128,23 +139,41 @@
    * @returns a promise of the HTTP operation
    */
   Account.prototype.$getMailboxes = function(options) {
-    var _this = this;
+    var _this = this, reload = (options && options.reload);
 
-    if (this.$mailboxes && !(options && options.reload)) {
+    if (this.$mailboxes && !reload) {
       return Account.$q.when(this.$mailboxes);
     }
+    else if (!reload && this.$futureMailboxesData) {
+      return this.$futureMailboxesData;
+    }
     else {
-      return Account.$Mailbox.$find(this, options).then(function(data) {
+      this.$futureMailboxesData = Account.$Mailbox.$find(this, options).then(function(data) {
+        var previousMailboxes = _this.$flattenMailboxes({ all: true });
         _this.$mailboxes = data;
         _this.$expanded = false;
 
+        // Restore unseen count
+        var _visitForUnseencount = function(mailboxes) {
+          _.forEach(mailboxes, function(o) {
+            var previousMailbox = _.find(previousMailboxes, ['id', o.id]);
+            if (previousMailbox) {
+              o.unseenCount = previousMailbox.unseenCount;
+            }
+            if (o.children && o.children.length > 0) {
+              _visitForUnseencount(o.children);
+            }
+          });
+        };
+        _visitForUnseencount(_this.$mailboxes);
+
         // Set expanded folders from user's settings
         var expandedFolders,
-            _visit = function(mailboxes) {
+            _visitForExpanded = function(mailboxes) {
               _.forEach(mailboxes, function(o) {
                 o.$expanded = (expandedFolders.indexOf('/' + o.id) >= 0);
                 if (o.children && o.children.length > 0) {
-                  _visit(o.children);
+                  _visitForExpanded(o.children);
                 }
               });
             };
@@ -165,15 +194,17 @@
           }
           _this.$expanded = (expandedFolders.indexOf('/' + _this.id) >= 0);
           if (expandedFolders.length > 0) {
-            _visit(_this.$mailboxes);
+            _visitForExpanded(_this.$mailboxes);
           }
         }
         if (Account.$accounts)
           _this.$expanded |= (Account.$accounts.length == 1); // Always expand single account
+
         _this.$flattenMailboxes({reload: true});
 
         return _this.$mailboxes;
       });
+      return this.$futureMailboxesData;
     }
   };
 
@@ -291,6 +322,22 @@
   };
 
   /**
+   * @function getTextSignature
+   * @memberof Account.prototype
+   * @desc Create a plain text representation of the signature for the specified identity index.
+   * @returns a plain text version of the signature
+   */
+  Account.prototype.getTextSignature = function(identity) {
+    if (identity.signature) {
+      var element = angular.element('<div>' + identity.signature + '</div>');
+      identity.textSignature = _.map(element.contents(), 'textContent').join(' ').trim();
+    } else {
+      identity.textSignature = '';
+    }
+    return identity.textSignature;
+  };
+
+  /**
    * @function $certificate
    * @memberof Account.prototype
    * @desc View the S/MIME certificate details associated to the account.
@@ -402,7 +449,7 @@
         _this.delegates.push(user);
         deferred.resolve(_this.users);
       }, function(data, status) {
-        deferred.reject(l('An error occured please try again.'));
+        deferred.reject(l('An error occured, please try again.'));
       });
     }
     return deferred.promise;
@@ -425,5 +472,34 @@
       }
     });
   };
- 
+
+  /**
+   * @function $omit
+   * @memberof Account.prototype
+   * @desc Return a sanitized object used to send to the server.
+   * @return an object literal copy of the Account instance
+   */
+  Account.prototype.$omit = function () {
+    var account = {}, identities = [], defaultIdentity = false;
+
+    angular.forEach(this, function(value, key) {
+      if (key != 'constructor' && key !='identities' && key[0] != '$') {
+        account[key] = angular.copy(value);
+      }
+    });
+
+    _.forEach(this.identities, function (identity) {
+      if (!identity.isReadOnly)
+        identities.push(_.pick(identity, ['email', 'fullName', 'replyTo', 'signature', 'isDefault']));
+      if (identity.isDefault)
+        defaultIdentity = identity;
+    });
+    account.identities = identities;
+
+    if (!defaultIdentity || !account.forceDefaultIdentity)
+      delete account.forceDefaultIdentity;
+
+    return account;
+  };
+
 })();

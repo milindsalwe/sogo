@@ -104,7 +104,7 @@
 "To"            = "Komu";
 "Cc"            = "Kopie";
 "Bcc"           = "Skrytá Kopie";
-"Reply-To"	    = "Odpovědět komu";
+"Reply-To"	= "Odpovědět komu";
 "Add address"   = "Přidat adresu";
 "Body"          = "Tělo";
 "Open" = "Otevřít";
@@ -121,6 +121,7 @@
 "Edit Draft..." = "Upravit koncept...";
 "Load Images" = "Nahrát obrázky";
 "Return Receipt" = "Potvrzení o přečtení";
+"Choose which identity to send this message from" = "Vyberte identitu, ze které se má tato zpráva odeslat";
 "The sender of this message has asked to be notified when you read this message. Do you with to notify the sender?" = "Odesílatel této zprávy si přeje být informován o tom, že jste si tuto zprávu přečetli. Chcete odesílateli poslat potvrzení?";
 "Return Receipt (displayed) - %@"= "Potvrzení o přečtení (zobrazeno) - %@";
 "This is a Return Receipt for the mail that you sent to %@.\n\nNote: This Return Receipt only acknowledges that the message was displayed on the recipient's computer. There is no guarantee that the recipient has read or understood the message contents." = "Toto je potvrzení o přečtení ke zprávě, kterou jste poslali pro %@.\n\nPoznámka: Potvrzení o přijetí znamená pouze to, že se zpráva zobrazila na počítači adresáta. Není ale zaručeno, že adresát zprávu četl a porozuměl jejímu obsahu.";
@@ -179,6 +180,7 @@
 
 /* Address Popup menu */
 "Add to Address Book..." = "Přidat do adresáře...";
+"Successfully created card" = "Karta byla úspěšně vytvořena";
 "Compose Mail To" = "Napsat mail pro";
 "Create Filter From Message..." = "Vytvořit filtr ze zprávy...";
 
@@ -262,10 +264,19 @@
 "digest failure" = "Zpráva byla modifikována";
 
 /* OpenSSL reading error */
-"Error reading the certificate. Please install a new certificate." = "Chyba čtení certifikátu. Nainstalujte si prosím nový certifikát.";
+"Error reading the certificate. Please install a new certificate." = "Chyba při čtení certifikátu. Nainstalujte si prosím nový certifikát.";
 
 /* Trying to access a non-existent certificate */
 "No certificate associated to account." = "K účtu není přiřazen certfikát.";
+
+/* Invalid message signature */
+"Digital signature is not valid" = "Elektronický podpis není validní";
+
+/* Valid message signature */
+"Message is signed" = "Zpráva je podepsána";
+
+/* Unknown error while validating message signature */
+"Digital signature is not valid" = "Elektronický podpis není validní";
 
 "This Folder" = "Tato složka";
 
@@ -402,6 +413,15 @@
 "Your email has been saved" = "Vaše zpráva byla uložena";
 "Your email has been sent" = "Vaše zpráva byla odeslána";
 "Folder compacted" = "Údržba složky byla provedena";
+
+/* Advanced search */
+"Enter Subject" = "Zadejte předmět";
+"Enter From" = "Zadejte odesílatele";
+"Enter To" = "Zadejte příjemce";
+"Enter Cc" = "Zadejte příjemce kopie";
+"Enter Body" = "Zadejte text zprávy";
+"match" = "odpovídá";
+"does not match" = "neodpovídá";
 
 /* Aria label for scope of search on messages */
 "Search scope" = "Oblast hledání";

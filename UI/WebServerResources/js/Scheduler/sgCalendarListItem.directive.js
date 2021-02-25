@@ -37,11 +37,10 @@
         '         sg-enter="$ctrl.saveFolder($event)"',
         '         sg-escape="$ctrl.revertEditing()" />',
         '</md-input-container>',
-        '<md-button class="md-secondary md-icon-button" ',
-        '           as-sortable-item-handle="as-sortable-item-handle">',
-        '  <md-icon md-colors="::{color: \'accent-400\'}">drag_handle</md-icon>',
-        '</md-button>',
-        '<md-icon class="md-menu sg-list-sortable-hide"',
+        '<md-icon class="md-menu md-secondary-container"',
+        '           as-sortable-item-handle="as-sortable-item-handle"',
+        '           md-colors="::{color: \'accent-400\'}">drag_handle</md-icon>',
+        '<md-icon class="md-menu md-secondary-container sg-list-sortable-hide"',
         '         ng-click="$ctrl.showMenu($event)"',
         '         aria-label="' + l("Options") + '">more_vert</md-icon>'
       ].join(''),
@@ -106,6 +105,9 @@
     this.saveFolder = function($event) {
       if (this.inputElement.disabled)
         return;
+
+      if (this.inputElement.value.length === 0)
+        this.revertEditing();
 
       this.calendar.name = this.inputElement.value;
       this.inputElement.disabled = true;
@@ -337,7 +339,7 @@
 
                 $mdToast.show(
                   $mdToast.simple()
-                    .content(msg)
+                    .textContent(msg)
                     .position('top right')
                     .hideDelay(3000));
               },

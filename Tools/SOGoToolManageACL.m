@@ -1,6 +1,6 @@
 /* SOGoToolManageACL.m - this file is part of SOGo
  *
- * Copyright (C) 2017-2018 Inverse inc.
+ * Copyright (C) 2017-2020 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,6 +32,7 @@
 #import <GDLContentStore/NSURL+GCS.h>
 
 #import <SOGo/SOGoCache.h>
+#import <SOGo/SOGoSource.h>
 #import <SOGo/SOGoUserManager.h>
 #import <SOGo/NSArray+Utilities.h>
 #import <SOGo/NSString+Utilities.h>
@@ -106,7 +107,7 @@ typedef enum
 
 - (void) usage
 {
-  fprintf (stderr, "manage-acl get|add|remove|subscribe|unsubscribe owner folder user <rights>\n\n"
+  fprintf (stderr, "manage-acl get|add|remove|subscribe|unsubscribe owner folder user|group <rights>\n\n"
 	   "           get          get ACL information of folder for user\n"
 	   "           add          add ACL information of folder for user\n"
 	   "           remove       remove all ACL information of folder for user\n"
@@ -114,9 +115,9 @@ typedef enum
 	   "           unsubscribe  unsubscribe user to owner's folder\n"
            "           owner        the user owning the folder\n"
 	   "           folder       the folder - Calendar/<ID> or Contacts/<ID>\n"
-	   "           user         the user to get/set rights for - 'ALL', '<default>', 'anonymous' are supported\n"
+	   "           user         the user (or group without the @ prefix) to get/set rights for - 'ALL', '<default>', 'anonymous' are supported\n"
            "           rights       rights to add\n\n"
-           "Example:   sogo-tool manage-acl get jdoe Calendar/personal\n\n"
+           "Example:   sogo-tool manage-acl get jdoe Calendar/personal ALL\n\n"
            "Note:      You can add only one access right at the time. To set them all at once,\n"
            "           invoke 'remove' first to remove them all.\n\n");
 }
@@ -205,7 +206,7 @@ typedef enum
               if (u)
                 [allSQLUsers addObject: u];
             }
-          [cm releaseChannel: fc];
+          [cm releaseChannel: fc  immediately: YES];
         }
 
       // We add our system users
@@ -243,7 +244,12 @@ typedef enum
 
       infos = [lm contactInfosForUserWithUIDorEmail: u];
       if (infos)
-        [allUsers addObject: [infos objectForKey: @"c_uid"]];
+        {
+          if (infos && [[infos objectForKey: @"isGroup"] boolValue])
+            [allUsers addObject: [NSString stringWithFormat: @"@%@", [infos objectForKey: @"c_uid"]]];
+          else
+            [allUsers addObject: [infos objectForKey: @"c_uid"]];
+        }
       else
         {
           // We haven't found the user based on the GCS table name
@@ -413,7 +419,9 @@ typedef enum
   fm = [GCSFolderManager defaultFolderManager];
   f = [fm folderAtPath: [NSString stringWithFormat: @"/Users/%@/%@", owner, folder]];
 
-  if (!f)
+  // Skip the folder existence check so we can auto-create the personal folder
+  // for users that have never logged-in
+  if (!f && command != ManageACLSubscribe)
     {
       NSLog(@"No folder %@ found for user %@", folder, owner);
       rc = NO;

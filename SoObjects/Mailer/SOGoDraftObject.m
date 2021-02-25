@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2007-2018 Inverse inc.
+  Copyright (C) 2007-2021 Inverse inc.
   Copyright (C) 2004-2005 SKYRIX Software AG
 
   This file is part of SOGo.
@@ -50,6 +50,7 @@
 
 #import <SOGo/NSArray+Utilities.h>
 #import <SOGo/NSCalendarDate+SOGo.h>
+#import <SOGo/NSDictionary+Utilities.h>
 #import <SOGo/NSString+Utilities.h>
 #import <SOGo/SOGoBuild.h>
 #import <SOGo/SOGoDomainDefaults.h>
@@ -664,6 +665,68 @@ static NSString    *userAgent      = nil;
 //
 //
 //
+- (NSString *) _emailFromIdentity: (NSDictionary *) identity
+{
+  NSString *fullName, *format;
+
+  fullName = [identity objectForKey: @"fullName"];
+  if ([fullName length])
+    format = @"%{fullName} <%{email}>";
+  else
+    format = @"%{email}";
+
+  return [identity keysWithFormat: format];
+}
+
+- (void) _fillInFromAddress: (NSMutableDictionary *) _info
+            fromSentMailbox: (BOOL) _fromSentMailbox
+                   envelope: (NGImap4Envelope *) _envelope
+{
+  NSDictionary *identity;
+  NSMutableArray *addrs;
+  NSString *email;
+  SOGoMailAccount *account;
+  int i;
+
+  identity = nil;
+  account = [[self container] mailAccountFolder];
+  if (![account forceDefaultIdentity])
+    {
+      /* Pick the first email matching one of the account's identities */
+      addrs = [NSMutableArray array];
+      if (_fromSentMailbox)
+        [self _addRecipients: [_envelope from] toArray: addrs];
+      else
+        {
+          [self _addRecipients: [_envelope to] toArray: addrs];
+          [self _addRecipients: [_envelope cc] toArray: addrs];
+          [self _addRecipients: [_envelope bcc] toArray: addrs];
+        }
+
+      if ([addrs count])
+        {
+          for (i = 0; !identity && i < [addrs count]; i++)
+            {
+              email = [addrs objectAtIndex: i];
+              identity = [[[self container] mailAccountFolder] identityForEmail: email];
+            }
+          if (identity)
+            {
+              [_info setObject: [self _emailFromIdentity: identity]  forKey: @"from"];
+            }
+        }
+    }
+  if (!identity)
+    {
+      identity = [account defaultIdentity];
+      if (identity)
+        [_info setObject: [self _emailFromIdentity: identity]  forKey: @"from"];
+    }
+}
+
+//
+//
+//
 - (void) _fillInReplyAddresses: (NSMutableDictionary *) _info
 		    replyToAll: (BOOL) _replyToAll
                fromSentMailbox: (BOOL) _fromSentMailbox
@@ -705,11 +768,9 @@ static NSString    *userAgent      = nil;
       int i;
 
       identities = [[[self container] mailAccountFolder] identities];
-
       for (i = 0; i < [identities count]; i++)
         {
           email = [[identities objectAtIndex: i] objectForKey: @"email"];
-
           if (email)
             [allRecipients addObject: email];
         }
@@ -726,7 +787,7 @@ static NSString    *userAgent      = nil;
   else
     [addrs setArray: [_envelope from]];
 
-  [self _purgeRecipients: allRecipients  fromAddresses: addrs];
+  [self _purgeRecipients: allRecipients  fromAddresses: addrs]; // addrs contain the recipient addresses without the any of the sender's addresses
   [self _addEMailsOfAddresses: addrs  toArray: to];
   [self _addRecipients: addrs  toArray: allRecipients];
   [_info setObject: to  forKey: @"to"];
@@ -741,6 +802,11 @@ static NSString    *userAgent      = nil;
 	[self _addEMailsOfAddresses: [_envelope from]  toArray: to];
     }
 
+  /* Pick the first email matching one of the account's identities */
+  [self _fillInFromAddress: _info
+           fromSentMailbox: _fromSentMailbox
+                  envelope: _envelope];
+
   /* If we have no To but we have Cc recipients, let's move the Cc
      to the To bucket... */
   if ([[_info objectForKey: @"to"] count] == 0 && [_info objectForKey: @"cc"])
@@ -752,25 +818,33 @@ static NSString    *userAgent      = nil;
       [_info removeObjectForKey: @"cc"];
     }
 
-  /* CC processing if we reply-to-all: - we add all 'to' and 'cc' fields */
+  /* CC processing if we reply-to-all: - we add all 'to', 'cc' and 'bcc' fields */
   if (_replyToAll)
     {
-      to = [[NSMutableArray alloc] init];
+      to = [NSMutableArray array];
 
       [addrs setArray: [_envelope to]];
       [self _purgeRecipients: allRecipients
-	    fromAddresses: addrs];
+               fromAddresses: addrs];
       [self _addEMailsOfAddresses: addrs toArray: to];
       [self _addRecipients: addrs toArray: allRecipients];
 
       [addrs setArray: [_envelope cc]];
       [self _purgeRecipients: allRecipients
-	    fromAddresses: addrs];
+               fromAddresses: addrs];
       [self _addEMailsOfAddresses: addrs toArray: to];
-
+      [self _addRecipients: addrs toArray: allRecipients];
       [_info setObject: to forKey: @"cc"];
 
-      [to release];
+      if ([[_envelope bcc] count])
+        {
+          to = [NSMutableArray array];
+          [addrs setArray: [_envelope bcc]];
+          [self _purgeRecipients: allRecipients
+                   fromAddresses: addrs];
+          [self _addEMailsOfAddresses: addrs toArray: to];
+          [_info setObject: to forKey: @"bcc"];
+        }
     }
 }
 
@@ -779,7 +853,7 @@ static NSString    *userAgent      = nil;
 //
 - (void) _fetchAttachmentsFromMail: (SOGoMailObject *) sourceMail
 {
-  NSDictionary *currentInfo;
+  NSMutableDictionary *currentInfo;
   NSArray *attachments;
 
   unsigned int max, count;
@@ -819,12 +893,12 @@ static NSString    *userAgent      = nil;
 
       if (filename)
         {
-          NSDictionary *currentInfo;
+          NSMutableDictionary *currentInfo;
 
-          currentInfo = [NSDictionary dictionaryWithObjectsAndKeys:
-                                            filename, @"filename",
-                                      mimeType, @"mimetype",
-                                      nil];
+          currentInfo = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+                                               filename, @"filename",
+                                             mimeType, @"mimetype",
+                                             nil];
           [self saveAttachment: body
                   withMetadata: currentInfo];
         }
@@ -867,6 +941,18 @@ static NSString    *userAgent      = nil;
 //
 //
 //
+- (void) _fetchAttachmentsFromOpaqueSignedMail: (SOGoMailObject *) sourceMail
+{
+  NGMimeMessage *m;
+
+  m = [[sourceMail content] messageFromOpaqueSignedData];
+  [self _fileAttachmentsFromPart: [m body]];
+}
+
+
+//
+//
+//
 - (void) fetchMailForEditing: (SOGoMailObject *) sourceMail
 {
   NSString *subject, *msgid;
@@ -874,6 +960,7 @@ static NSString    *userAgent      = nil;
   NSDictionary *h;
   NSMutableArray *addresses;
   NGImap4Envelope *sourceEnvelope;
+  SOGoUserDefaults *ud;
   id priority, receipt;
 
   [sourceMail fetchCoreInfos];
@@ -917,10 +1004,12 @@ static NSString    *userAgent      = nil;
   if ([receipt isNotEmpty] && [receipt isKindOfClass: [NSString class]])
       [info setObject: (NSString*)receipt forKey: @"Disposition-Notification-To"];
 
-  [self setHeaders: info];
+  ud = [[context activeUser] userDefaults];
 
+  [self setHeaders: info];
   [self setText: [sourceMail contentForEditing]];
   [self setIMAP4ID: [[sourceMail nameInContainer] intValue]];
+  [self setIsHTML: [[ud mailComposeMessageType] isEqualToString: @"html"]];
 }
 
 //
@@ -931,9 +1020,9 @@ static NSString    *userAgent      = nil;
 {
   BOOL fromSentMailbox;
   NSString *msgID;
-  NSMutableArray *addresses;
   NSMutableDictionary *info;
   NGImap4Envelope *sourceEnvelope;
+  SOGoUserDefaults *ud;
 
   fromSentMailbox = [[sourceMail container] isKindOfClass: [SOGoSentFolder class]];
   [sourceMail fetchCoreInfos];
@@ -950,13 +1039,11 @@ static NSString    *userAgent      = nil;
   if ([msgID length] > 0)
     [self setInReplyTo: msgID];
 
-  addresses = [NSMutableArray array];
-  [self _addEMailsOfAddresses: [sourceEnvelope to] toArray: addresses];
-  if ([addresses count])
-    [info setObject: [addresses objectAtIndex: 0] forKey: @"from"];
+  ud = [[context activeUser] userDefaults];
 
   [self setText: [sourceMail contentForReply]];
   [self setHeaders: info];
+  [self setIsHTML: [[ud mailComposeMessageType] isEqualToString: @"html"]];
   [self setSourceURL: [sourceMail imap4URLString]];
   [self setSourceFlag: @"Answered"];
   [self setSourceIMAP4ID: [[sourceMail nameInContainer] intValue]];
@@ -967,18 +1054,26 @@ static NSString    *userAgent      = nil;
 
 - (void) fetchMailForForwarding: (SOGoMailObject *) sourceMail
 {
-  NSDictionary *info, *attachment;
-  NSString *signature, *nl;
+  BOOL fromSentMailbox;
+  NGImap4Envelope *sourceEnvelope;
+  NSMutableDictionary *attachment, *info;
+  NSString *signature, *nl, *space;
   SOGoUserDefaults *ud;
 
+  fromSentMailbox = [[sourceMail container] isKindOfClass: [SOGoSentFolder class]];
   [sourceMail fetchCoreInfos];
+  sourceEnvelope = [sourceMail envelope];
+  info = [NSMutableDictionary dictionaryWithCapacity: 2];
 
   if ([sourceMail subjectForForward])
     {
-      info = [NSDictionary dictionaryWithObject: [sourceMail subjectForForward]
-			   forKey: @"subject"];
-      [self setHeaders: info];
+      [info setObject: [sourceMail subjectForForward] forKey: @"subject"];
     }
+
+  [self _fillInFromAddress: info
+           fromSentMailbox: fromSentMailbox
+                  envelope: sourceEnvelope];
+  [self setHeaders: info];
 
   [self setSourceURL: [sourceMail imap4URLString]];
   [self setSourceFlag: @"$Forwarded"];
@@ -992,6 +1087,8 @@ static NSString    *userAgent      = nil;
       [self setText: [sourceMail contentForInlineForward]];
       if ([sourceMail isEncrypted])
         [self _fetchAttachmentsFromEncryptedMail: sourceMail];
+      else if ([sourceMail isOpaqueSigned])
+        [self _fetchAttachmentsFromOpaqueSignedMail: sourceMail];
       else
         [self _fetchAttachmentsFromMail: sourceMail];
     }
@@ -1002,13 +1099,14 @@ static NSString    *userAgent      = nil;
       signature = [[self mailAccountFolder] signature];
       if ([signature length])
         {
-          nl = (isHTML ? @"<br/>" : @"\n");
-          [self setText: [NSString stringWithFormat: @"%@%@-- %@%@", nl, nl, nl, signature]];
+          nl = (isHTML ? @"<br />" : @"\n");
+          space = (isHTML ? @"&nbsp;" : @" ");
+          [self setText: [NSString stringWithFormat: @"%@%@--%@%@%@", nl, nl, space, nl, signature]];
         }
-      attachment = [NSDictionary dictionaryWithObjectsAndKeys:
-				   [sourceMail filenameForForward], @"filename",
-				 @"message/rfc822", @"mimetype",
-				 nil];
+      attachment = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+                                          [sourceMail filenameForForward], @"filename",
+                                        @"message/rfc822", @"mimetype",
+                                        nil];
       [self saveAttachment: [sourceMail content]
               withMetadata: attachment];
     }
@@ -1086,9 +1184,11 @@ static NSString    *userAgent      = nil;
  * file with its mime type.
  */
 - (NSException *) saveAttachment: (NSData *) _attach
-		    withMetadata: (NSDictionary *) metadata
+		    withMetadata: (NSMutableDictionary *) metadata
 {
-  NSString *p, *pmime, *name, *mimeType;
+  NSFileManager *fm;
+  NSString *p, *pmime, *name, *baseName, *extension, *mimeType;
+  int i;
 
   if (![_attach isNotNull])
     {
@@ -1103,7 +1203,21 @@ static NSString    *userAgent      = nil;
     }
 
   name = [[metadata objectForKey: @"filename"] asSafeFilename];
+  baseName = [name stringByDeletingPathExtension];
+  extension = [name pathExtension];
+  fm = [NSFileManager defaultManager];
   p = [self pathToAttachmentWithName: name];
+  i = 1;
+
+  while ([fm isReadableFileAtPath: p])
+    {
+      name = [NSString stringWithFormat: @"%@-%x", baseName, i];
+      if ([extension length])
+        name = [NSString stringWithFormat: @"%@.%@", name, extension];
+      p = [self pathToAttachmentWithName: name];
+      [metadata setObject: name forKey: @"filename"];
+      i++;
+    }
 
   if (![_attach writeToFile: p atomically: YES])
     {
@@ -1788,7 +1902,7 @@ static NSString    *userAgent      = nil;
                                   lookupName: @"Contacts"
                                    inContext: context
                                      acquire: NO];
-          certificate = [[contactFolders certificateForEmail: theRecipient] convertPKCS7ToPEM];
+          certificate = [[contactFolders certificateForEmail: theRecipient] signersFromPKCS7];
         }
       else
         certificate =  [[self mailAccountFolder] certificate];
@@ -1920,6 +2034,9 @@ static NSString    *userAgent      = nil;
                          lookupName: @"Contacts"
                           inContext: context
                             acquire: NO];
+      // Get the selected addressbook from the user preferences where the new address will be added
+      addressBook = [ud selectedAddressBook];
+      folder = [contactFolders lookupName: addressBook inContext: context  acquire: NO];
       // Get all the recipients from the current email
       recipients = [self allRecipients];
       for (i = 0; i < [recipients count]; i++)
@@ -1933,24 +2050,22 @@ static NSString    *userAgent      = nil;
           matchingContacts = [contactFolders allContactsFromFilter: emailAddress
                                                      excludeGroups: YES
                                                       excludeLists: YES];
-        }
-      // If we don't get any results from the autocompletion code, we add it..
-      if ([matchingContacts count] == 0)
-        {
-          // Get the selected addressbook from the user preferences where the new address will be added
-          addressBook = [ud selectedAddressBook];
-          folder = [contactFolders lookupName: addressBook inContext: context  acquire: NO];
-          uid = [folder globallyUniqueObjectId];
 
-          if (folder && uid)
+          // If we don't get any results from the autocompletion code, we add it..
+          if ([matchingContacts count] == 0)
             {
-              card = [NGVCard cardWithUid: uid];
-              [card addEmail: emailAddress types: nil];
-              [card setFn: [parsedRecipient displayName]];
+              uid = [folder globallyUniqueObjectId];
 
-              newContact = [SOGoContactGCSEntry objectWithName: uid  inContainer: folder];
-              [newContact setIsNew: YES];
-              [newContact saveComponent: card];
+              if (folder && uid)
+                {
+                  card = [NGVCard cardWithUid: uid];
+                  [card addEmail: emailAddress types: nil];
+                  [card setFn: [parsedRecipient displayName]];
+
+                  newContact = [SOGoContactGCSEntry objectWithName: uid  inContainer: folder];
+                  [newContact setIsNew: YES];
+                  [newContact saveComponent: card];
+                }
             }
         }
     }
@@ -1989,7 +2104,7 @@ static NSString    *userAgent      = nil;
           if ([[context activeUser] hasEmail: recipient])
             message = messageForSent = [self mimeMessageForRecipient: nil];
           else
-            message = [self mimeMessageForRecipient: recipient];;
+            message = [self mimeMessageForRecipient: recipient];
 
           if (!message)
             return  [NSException exceptionWithHTTPStatus: 500
@@ -2039,7 +2154,7 @@ static NSString    *userAgent      = nil;
           if (!error)
             {
               [self imap4Connection];
-              if (IMAP4ID > -1)
+              if (IMAP4ID > -1 && ![dd mailKeepDraftsAfterSend])
                 [imap4 markURLDeleted: [self imap4URL]];
               if (sourceURL && sourceFlag)
                 {

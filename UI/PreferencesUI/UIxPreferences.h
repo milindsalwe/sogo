@@ -1,6 +1,6 @@
 /* UIxPreferences.h - this file is part of SOGo
  *
- * Copyright (C) 2007-2016 Inverse inc.
+ * Copyright (C) 2007-2019 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,13 +36,7 @@
 
   // Addressbook
   NSMutableDictionary *addressBooksIDWithDisplayName;
-  
-  // Calendar categories
-  NSString *category;
-  NSArray *calendarCategories;
-  NSDictionary *calendarCategoriesColors;
-  
-  NSArray *contactsCategories;
+
   NSCalendarDate *today;
 
   // Sieve filtering

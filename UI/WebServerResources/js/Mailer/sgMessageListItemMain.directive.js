@@ -26,10 +26,13 @@
         '  <div class="sg-md-body">',
         '    <div class="sg-tile-subject"><!-- subject --></div>',
         '    <div class="sg-tile-size"><!-- size --></div>',
+        '    <md-button class="sg-tile-btn md-secondary ng-hide" md-colors="::{ color: \'accent-600\'}" ng-click="$ctrl.toggleThread()">',
+        '      <md-icon class="md-rotate-180-ccw" md-colors="::{ color: \'accent-600\'}">expand_more</md-icon><span></span>', // expanded by default (icon is rotated)
+        '    </md-button>',
         '  </div>',
         '</div>',
         '<div class="sg-tile-icons">',
-        '  <md-icon class="ng-hide">star</md-icon>',
+        '  <md-icon class="ng-hide sg-icon-star">star</md-icon>',
         '  <md-icon class="ng-hide">reply</md-icon>',
         '  <md-icon class="ng-hide">forward</md-icon>',
         '  <md-icon class="ng-hide">attach_file</md-icon>',
@@ -59,7 +62,7 @@
     var $ctrl = this;
 
     this.$postLink = function () {
-      var contentDivElement, iconsDivElement;
+      var contentDivElement, threadButton, iconsDivElement;
       var parentControllerOnUpdate, setVisibility;
 
       this.parentController = $scope.parentController;
@@ -73,6 +76,12 @@
         else if (div.classList.contains('sg-tile-icons'))
           iconsDivElement = angular.element(div);
       });
+
+      threadButton = contentDivElement.find('button')[0];
+      this.threadButton = threadButton;
+      threadButton = angular.element(threadButton);
+      this.threadIconElement = threadButton.find('md-icon')[0];
+      this.threadCountElement = threadButton.find('span')[0];
 
       this.priorityIconElement = contentDivElement.find('md-icon')[0];
 
@@ -131,7 +140,7 @@
           $ctrl.mailboxNameElement.innerHTML = $ctrl.message.$mailbox.$displayName;
 
         // Sender or recipient when in
-        if ($ctrl.MailboxService.selectedFolder.type == 'sent')
+        if ($ctrl.MailboxService.selectedFolder.isSentFolder)
           $ctrl.senderElement.innerHTML = $ctrl.message.$shortAddress('to').encodeEntities();
         else
           $ctrl.senderElement.innerHTML = $ctrl.message.$shortAddress('from').encodeEntities();
@@ -146,6 +155,17 @@
         }
         else
           $ctrl.priorityIconElement.classList.add('ng-hide');
+
+        // Mail thread
+        if ($ctrl.message.first) {
+          $ctrl.threadButton.classList.remove('ng-hide');
+          $ctrl.threadCountElement.innerHTML = $ctrl.message.threadCount;
+          if ($ctrl.message.collapsed)
+            $ctrl.threadIconElement.classList.remove('md-rotate-180-ccw');
+        }
+        else {
+          $ctrl.threadButton.classList.add('ng-hide');
+        }
 
         // Subject
         $ctrl.subjectElement.innerHTML = $ctrl.message.subject.encodeEntities();
@@ -171,6 +191,14 @@
 
       this.service = Message;
       this.MailboxService = Mailbox;
+    };
+
+    this.toggleThread = function() {
+      if (this.message.collapsed)
+        this.threadIconElement.classList.add('md-rotate-180-ccw');
+      else
+        this.threadIconElement.classList.remove('md-rotate-180-ccw');
+      this.message.toggleThread();
     };
 
   }

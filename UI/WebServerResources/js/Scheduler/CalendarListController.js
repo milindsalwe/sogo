@@ -6,8 +6,8 @@
   /**
    * @ngInject
    */
-  CalendarListController.$inject = ['$rootScope', '$scope', '$q', '$timeout', '$state', '$mdDialog', 'sgHotkeys', 'sgFocus', 'Dialog', 'Preferences', 'CalendarSettings', 'Calendar', 'Component', 'Alarm'];
-  function CalendarListController($rootScope, $scope, $q, $timeout, $state, $mdDialog, sgHotkeys, focus, Dialog, Preferences, CalendarSettings, Calendar, Component, Alarm) {
+  CalendarListController.$inject = ['$rootScope', '$scope', '$q', '$timeout', '$state', '$mdDialog', 'sgHotkeys', 'sgFocus', 'Dialog', 'Preferences', 'CalendarSettings', 'Calendar', 'Component'];
+  function CalendarListController($rootScope, $scope, $q, $timeout, $state, $mdDialog, sgHotkeys, focus, Dialog, Preferences, CalendarSettings, Calendar, Component) {
     var vm = this, hotkeys = [], type, sortLabels;
 
     sortLabels = {
@@ -196,7 +196,8 @@
 
       if (baseComponent) {
         component = baseComponent;
-        component.updateFreeBusy();
+        component.initAttendees();
+        component.$attendees.updateFreeBusy();
       }
       else {
         component = new Component({ pid: Calendar.$defaultCalendar(), type: type });
@@ -221,16 +222,19 @@
 
     // Adjust component or create new component through drag'n'drop
     function updateComponentFromGhost($event) {
-      var component, pointerHandler, coordinates, delta, params, calendarNumber, activeCalendars;
+      var component, pointerHandler, originalCoordinates, coordinates, delta, params, calendarNumber, activeCalendars;
 
       component = Component.$ghost.component;
       pointerHandler = Component.$ghost.pointerHandler;
 
       if (component.isNew) {
+        originalCoordinates = pointerHandler.originalEventCoordinates;
         coordinates = pointerHandler.currentEventCoordinates;
         component.summary = '';
         if (component.isAllDay)
           coordinates.duration -= 96;
+        if (coordinates.start < originalCoordinates.start)
+          coordinates.duration *= -1;
         component.setDelta(coordinates.duration * 15);
         newComponent(null, 'appointment', component)
           .catch()
@@ -259,7 +263,7 @@
           // Immediately perform the adjustments
           component.$adjust(params).then(function() {
             $rootScope.$emit('calendars:list');
-            Alarm.getAlarms();
+            Preferences.getAlarms();
           }, function(response) {
             onComponentAdjustError(response, component, params);
           }).finally(function() {

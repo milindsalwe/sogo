@@ -65,7 +65,6 @@
   NSString *sourceUID;
   NSString *sourceFolder;
   NSString *text;
-  NSMutableArray *fromEMails;
   NSString *from;
   SOGoMailFolder *sentFolder;
   BOOL isHTML;
@@ -122,7 +121,6 @@ static NSArray *infoKeys = nil;
   [priority release];
   [receipt release];
   [sentFolder release];
-  [fromEMails release];
   [from release];
   [text release];
   [subject release];
@@ -203,11 +201,6 @@ static NSArray *infoKeys = nil;
   return [[ud mailComposeMessageType] isEqualToString: @"html"];
 }
 
-- (NSString *) editorClass
-{
-  return ([self isHTML]? @"ck-editor" : @"plain-text");
-}
-
 - (NSString *) itemPriorityText
 {
   return [self labelForKey: [NSString stringWithFormat: @"%@", [item lowercaseString]]];
@@ -258,10 +251,10 @@ static NSArray *infoKeys = nil;
   NSRange r;
   BOOL valid;
 
-  identities = [[[self clientObject] mailAccountFolder] identities];
-  if ([identities count])
+  if ([from length])
     {
-      if (from)
+      identities = [[[self clientObject] mailAccountFolder] identities];
+      if ([identities count])
         {
           allIdentities = [identities objectEnumerator];
           valid = NO;
@@ -283,11 +276,6 @@ static NSArray *infoKeys = nil;
               from = nil;
             }
         }
-      if (!from)
-        {
-          from = [self _emailFromIdentity: [identities objectAtIndex: 0]];
-          [from retain];
-        }
     }
 
   return from;
@@ -306,19 +294,11 @@ static NSArray *infoKeys = nil;
   //
   if ([[[[self clientObject] mailAccountFolder] nameInContainer] intValue] == 0)
     {
-      SOGoUserDefaults *ud;
-      
-      ud = [[context activeUser] userDefaults];
-      value = [ud mailReplyTo];
+      value = [[[context activeUser] defaultIdentity] objectForKey: @"replyTo"];
     }
   else
     {
-      NSArray *identities;
-      
-      identities = [[[self clientObject] mailAccountFolder] identities];
-
-      if ([identities count])
-        value = [[identities objectAtIndex: 0] objectForKey: @"replyTo"];
+      value = [[[[self clientObject] mailAccountFolder] defaultIdentity] objectForKey: @"replyTo"];
     }
 
   return value;
@@ -372,7 +352,7 @@ static NSArray *infoKeys = nil;
   if ([newTo isKindOfClass: [NSNull class]])
     newTo = nil;
 
-  ASSIGN (to, newTo);
+  ASSIGN (to, [newTo uniqueObjects]);
 }
 
 - (NSArray *) to
@@ -385,7 +365,7 @@ static NSArray *infoKeys = nil;
   if ([newCc isKindOfClass: [NSNull class]])
     newCc = nil;
 
-  ASSIGN (cc, newCc);
+  ASSIGN (cc, [newCc uniqueObjects]);
 }
 
 - (NSArray *) cc
@@ -398,7 +378,7 @@ static NSArray *infoKeys = nil;
   if ([newBcc isKindOfClass: [NSNull class]])
     newBcc = nil;
 
-  ASSIGN (bcc, newBcc);
+  ASSIGN (bcc, [newBcc uniqueObjects]);
 }
 
 - (NSArray *) bcc
@@ -424,31 +404,6 @@ static NSArray *infoKeys = nil;
 - (NSFormatter *) sizeFormatter
 {
   return [UIxMailSizeFormatter sharedMailSizeFormatter];
-}
-
-/* from addresses */
-
-- (NSArray *) fromEMails
-{
-  NSArray *identities;
-  int count, max;
-  NSString *email;
-  SOGoMailAccount *account;
-
-  if (!fromEMails)
-    { 
-      account = [[self clientObject] mailAccountFolder];
-      identities = [account identities];
-      max = [identities count];
-      fromEMails = [[NSMutableArray alloc] initWithCapacity: max];
-      for (count = 0; count < max; count++)
-        {
-          email = [self _emailFromIdentity: [identities objectAtIndex: count]];
-          [fromEMails addObjectUniquely: email];
-        }
-    }
-
-  return fromEMails;
 }
 
 /* info loading */
@@ -570,10 +525,9 @@ static NSArray *infoKeys = nil;
   return newFilename;
 }
 
-- (NSDictionary *) _scanAttachmentFilenamesInRequest: (id) httpBody
+- (NSMutableDictionary *) _scanAttachmentFilenamesInRequest: (id) httpBody
 {
-  NSMutableDictionary *files;
-  NSDictionary *file;
+  NSMutableDictionary *files, *file;
   NSArray *parts;
   unsigned int count, max;
   NGMimeBodyPart *part;
@@ -592,11 +546,11 @@ static NSArray *infoKeys = nil;
         {
           mimeType = [(NGMimeType *)[part headerForKey: @"content-type"] stringValue];
           filename = [self _fixedFilename: [header filename]];
-          file = [NSDictionary dictionaryWithObjectsAndKeys:
-                                 filename, @"filename",
-                                 mimeType, @"mimetype",
-                                 [part body], @"body",
-                                 nil];
+          file = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+                                      filename, @"filename",
+                                      mimeType, @"mimetype",
+                                      [part body], @"body",
+                                      nil];
           [files setObject: file forKey: [NSString stringWithFormat: @"%@_%@", [header name], filename]];
         }
     }
@@ -609,7 +563,8 @@ static NSArray *infoKeys = nil;
   NSException *error;
   WORequest *request;
   NSEnumerator *allAttachments;
-  NSDictionary *attrs, *filenames;
+  NSMutableDictionary *attrs;
+  NSDictionary *filenames;
   id httpBody;
   SOGoDraftObject *co;
 
@@ -756,16 +711,18 @@ static NSArray *infoKeys = nil;
   co = [self clientObject];
   [co fetchInfo];
   [self loadInfo: [co headers]];
+  [self setIsHTML: [co isHTML]];
   [self setText: [co text]];
   [self setSourceUID: [co IMAP4ID]];
   [self setSourceFolder: [co sourceFolder]];
 
   data = [NSMutableDictionary dictionaryWithObjectsAndKeys:
-                              [self from], @"from",
                               [self localeCode], @"locale",
                               [NSNumber numberWithBool: [self isHTML]], @"isHTML",
                               text, @"text",
                               nil];
+  if ((value = [self from]))
+    [data setObject: value forKey: @"from"];
   if ((value = [self replyTo]))
     [data setObject: value forKey: @"replyTo"];
   if ((value = [self to]))
@@ -793,7 +750,7 @@ static NSArray *infoKeys = nil;
   SOGoDraftObject *co;
 
   co = [self clientObject];
-  [self setIsHTML: [self isHTML]];
+  [co setIsHTML: isHTML];
 
   result = [self _saveRequestInfo];
   if (!result)
@@ -805,6 +762,7 @@ static NSArray *infoKeys = nil;
     {
       // Save new UID to plist
       [self setSourceUID: [co IMAP4ID]];
+      [co setIsHTML: isHTML];
       [co storeInfo];
 
       // Prepare response

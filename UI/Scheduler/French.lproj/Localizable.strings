@@ -56,7 +56,7 @@
 "Uploading" = "Téléversement en cours";
 "Publish Calendar..." = "Publier l'agenda...";
 "Reload Remote Calendars" = "Recharger les agendas distants";
-"Properties" = "Propriétés";
+"Properties" = "Propriétés...";
 "Done" = "Terminer";
 "An error occurred while importing calendar." = "Une erreur s'est produite lors de l'importation.";
 "No event was imported." = "Aucun événement n'a été importé.";
@@ -107,6 +107,7 @@
 "Name of the Calendar" = "Nom de l'agenda";
 "new" = "Nouveau";
 "Print view" = "Imprimer";
+"Print" = "Imprimer";
 "edit" = "Éditer";
 "delete" = "Supprimer";
 "proposal" = "Recherche de plages horaires";
@@ -147,6 +148,7 @@
 "Display events and tasks colors" = "Affichage en couleurs";
 "Borders" = "Bordures";
 "Backgrounds" = "Arrière-plans";
+"Page Format" = "Papier";
 
 /* Appointments */
 "Appointment viewer" = "Visualisation de rendez-vous";
@@ -440,15 +442,45 @@ validate_untilbeforeend    = "La répétition doit se terminer après la premiè
 "Are you sure you want to delete the selected components?"
 = "Voulez-vous vraiment supprimer les éléments sélectionnés?";
 
-/* Legend */
+/* Participation role */
+"Role" = "Role";
+
+/* Participant role: participation is required */
 "Participant" = "Invité";
+
+/* Participant role: participation is required */
+"req-participant" = "Invité";
+
+/* Participant role: participation is optional */
 "Optional Participant" = "Invité optionnel";
+
+/* Participant role: participation is optional */
+"opt-participant" = "Invité optionnel";
+
+/* Participant role: participant is copied for information purposes only */
 "Non Participant" = "Non-invité";
+
+/* Participant role: participant is copied for information purposes only */
+"non-participant" = "Non-invité";
+
+/* Participant role: participant is chair of the calendar entity */
 "Chair" = "Président";
+
+/* Participant role: participant is chair of the calendar entity */
+"chair" = "Président";
+
+/* Participant status: needs action */
 "Needs action" = "En attente";
+
+/* Participant status: event accepted */
 "Accepted" = "Accepté";
+
+/* Participant status: event declined */
 "Declined" = "Décliné";
+
+/* Participant status: tentatively accepted */
 "Tentative" = "Tentatif";
+
 "Free" = "Libre";
 "Busy" = "Occupé";
 "Maybe busy" = "Peut-être occupé";

@@ -157,6 +157,7 @@
       for (recordCount = 0; recordCount < recordMax; recordCount++)
         {
           record = [records objectAtIndex: recordCount];
+          user = [record objectForKey: @"owner"];
           if ([[record objectForKey: @"c_isopaque"] boolValue])
             {
               type = 0;
@@ -181,9 +182,13 @@
                           // We now fetch the c_partstates array and get the participation
                           // status of the user for the event
                           partstates = [[record objectForKey: @"c_partstates"] componentsSeparatedByString: @"\n"];
-		    
                           if (i < [partstates count])
                             {
+                              // 0: needs action   (considered busy)
+                              // 1: accepted       (busy)
+                              // 2: declined       (free)
+                              // 3: tentative      (free)
+                              // 4: delegated      (free)
                               type = ([[partstates objectAtIndex: i] intValue] < 2 ? 1 : 0);
                             }
                           break;
@@ -246,6 +251,17 @@
                   while ([currentDate compare: currentEndDate] == NSOrderedAscending &&
                          [currentEndDate timeIntervalSinceDate: currentDate] >= 3600) // 1 hour
                     {
+                      if ([currentDate hourOfDay] == 0)
+                        {
+                          // New day
+                          dayKey = [currentDate shortDateString];
+                          dayData = [freeBusy objectForKey: dayKey];
+                          if (!dayData)
+                            {
+                              dayData = [NSMutableDictionary dictionary];
+                              [freeBusy setObject: dayData forKey: dayKey];
+                            }
+                        }
                       hourKey = [NSString stringWithFormat: @"%u", (unsigned int)[currentDate hourOfDay]];
                       hourData = [dayData objectForKey: hourKey];
                       if (!hourData)
@@ -498,7 +514,7 @@
   response = [self redirectToLocation: [self _logoutRedirectURL]];
 
   date = [NSCalendarDate calendarDate];
-  [date setTimeZone: [NSTimeZone timeZoneWithAbbreviation: @"GMT"]];
+  [date setTimeZone: [NSTimeZone timeZoneForSecondsFromGMT: 0]];
 
   // We cleanup the memecached/database session cache. We do this before
   // invoking _logoutCookieWithDate: in order to obtain its value.

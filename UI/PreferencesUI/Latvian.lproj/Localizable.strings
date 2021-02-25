@@ -45,9 +45,14 @@
 "Days between responses" = "Dienas starp atbildēm";
 "Do not send responses to mailing lists" = "Nesūtīt automātiskās atbildes adresātu sarakstam";
 "Enable auto reply on" = "Ieslēgt automātisko atbildi";
+"First day of vacation" = "Pirmā atvaļinājuma diena";
 "Disable auto reply on" = "Izslēgt automātisko atbildi";
+"Last day of vacation" = "Pēdējā atvaļinājuma diena";
+"Enter date" = "Ievadiet datumu";
 "Always send vacation message response" = "Vienmēr sūtīt atvaļinājuma atbildes ziņojumu";
+"The vacation message is sent prior to apply your filters." = "Atvaļinājuma ziņojums tiek nosūtīts pirms filtru lietošanas.";
 "Discard incoming mails during vacation" = "Atmest ienākošo pastu atvaļinājuma laikā";
+"The vacation message is sent but incoming messages are not delivered to your inbox." = "Atvaļinājuma laika ziņojums tiek nosūtīts, bet ienākošās ziņas netiek piegādātas uz iesūtni.";
 "Please specify your message and your email addresses for which you want to enable auto reply."
 = "Lūdzu, norādiet ziņojuma adresātu un e-pasta adreses, kuras vēlaties iespējot automātisko atbildi.";
 "Your vacation message must not end with a single dot on a line." = "Jūsu atvaļinājums ziņa nedrīkst beigties ar vienu punktiņu līnijā.";
@@ -61,6 +66,7 @@
 = "Lūdzu, norādiet adresi, uz kuru vēlaties pārsūtīt ziņojumu.";
 "You are not allowed to forward your messages to an external email address." = "Jums nav atļauts pārsūtīt ziņojumus uz ārēju e-pasta adresi.";
 "You are not allowed to forward your messages to an internal email address." = "Jums nav atļauts nosūtīt savus ziņojumus iekšējai e-pasta adresei.";
+"You are not allowed to forward your messages to this domain:" = "Jums nav atļauts pārsūtīt ziņojumus uz šo domēnu:";
 
 /* d & t */
 "Current Time Zone" = "Pašreizējā laika josla";
@@ -85,7 +91,9 @@
 "shortDateFmt_12" = "%Y-%m-%d";
 "shortDateFmt_13" = "%Y/%m/%d";
 "shortDateFmt_14" = "%Y.%m.%d";
-"shortDateFmt_15" = "";
+"shortDateFmt_15" = "%d.%m.%Y";
+"shortDateFmt_16" = "%d.%m.%y";
+"shortDateFmt_17" = "";
 
 "longDateFmt_0" = "%A, %B %d, %Y";
 "longDateFmt_1" = "%B %d, %Y";
@@ -124,6 +132,8 @@
 "Prevent from being invited to appointments" = "Izvairītos no aicinājuma uz tikšanos";
 "White list for appointment invitations" = "Tikšanās uzaicinājumu baltais saraksts";
 "Contacts Names" = "Kontaktu nosaukumi";
+"Duplicate name" = "Nosaukuma dublikāts";
+"Calendar categories must have unique names." = "Kalendāra kategorijām ir jābūt ar unikāliem nosaukumiem.";
 
 /* Default Calendar */
 "Default calendar" = "Noklusējuma kalendārs";
@@ -154,6 +164,7 @@
 "New label" = "Jauna etiķete";
 "Show subscribed mailboxes only" = "Rādīt tikai abonētajām pastkastēm";
 "Synchronize only default mail folders (EAS)" = "Sinhronizēt tikai noklusējuma pasta mapes (EAS)";
+"Fetch count of unseen messages for all mailboxes" = "Iegūt visu pastkastu neredzamo ziņojumu skaitu";
 "Sort messages by threads" = "Kārtot ziņojumus pēc pavedieniem";
 "Always open mail composer" = "Vienmēr atvērt e-pasta sastādītāju";
 "Inside current window" = "Pašreizējā logā";
@@ -185,6 +196,7 @@
 /* Contact */
 "Personal Address Book" = "Personiskā adrešu grāmata";
 "Collected Address Book" = "Savāktā adrešu grāmata";
+"Contact categories must have unique names." = "Kontaktpersonu kategorijām jābūt unikāliem nosaukumiem.";
 
 /* IMAP Accounts */
 "Settings" = "Iestatījumi";
@@ -215,6 +227,7 @@
 "When composing a message" = "Veidojot ziņojumu";
 "Digitally sign the message by default" = "Ziņojuma parakstīšana ar ciparparakstu pēc noklusējuma";
 "Always try to encrypt the message" = "Vienmēr mēģiniet šifrēt ziņojumu";
+"An error occurred while importing the certificate. Verify your password." = "Importējot sertifikātu, radās kļūda. Pārbaudiet paroli.";
 
 /* Additional Parameters */
 "Additional Parameters" = "Papildu parametri";
@@ -235,6 +248,7 @@
 "Calendar Category" = "Kalendāra kategorija";
 "Add Calendar Category" = "Pievienot kalendāra kategorijai";
 "New category" = "Jauna kategorija";
+"Reset to defaults" = "Atiestatīt noklusējumus";
 "Remove Calendar Category" = "Noņemiet kalendāra kategorijas";
 "Contact Category" = "Kontaktu kategorijas";
 "Add Contact Category" = "Pievienot kontaktpersonu kategorijas";
@@ -270,6 +284,7 @@
 "Hebrew" = "עברית";
 "Hungarian" = "Magyar";
 "Icelandic" = "Íslenska";
+"Indonesian" = "bahasa Indonesia";
 "Italian" = "Italiano";
 "Japanese" = "日本語";
 "Latvian" = "Latviešu";
@@ -283,6 +298,7 @@
 "Romanian" = "Română";
 "Russian" = "Русский";
 "Serbian" = "Српски";
+"SerbianLatin" = "Srpski";
 "Slovak" = "Slovensky";
 "Slovenian" = "Slovenščina";
 "SpanishSpain" = "Español (España)";

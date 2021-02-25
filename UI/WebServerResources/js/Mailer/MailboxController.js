@@ -124,6 +124,8 @@
     }
 
     function _compactBeforeUnload(event) {
+      if (Mailbox.$virtualMode)
+        return true;
       return vm.selectedFolder.$compact();
     }
 
@@ -147,6 +149,11 @@
 
     this.ascending = function() {
       return Mailbox.$query.asc;
+    };
+
+    this.refresh = function () {
+      Preferences.pollInbox();
+      this.selectedFolder.$filter();
     };
 
     this.searchMode = function($event) {
@@ -401,8 +408,8 @@
 
       if (vm.messageDialog === null && _.size(selectedMessages) > 0)
         vm.messageDialog = Dialog.confirm(l('Confirmation'),
-                                       l('Are you sure you want to delete the selected messages?'),
-                                       { ok: l('Delete') })
+                                            l('Are you sure you want to delete the selected messages?'),
+                                            { ok: l('Delete') })
         .then(function() {
           var deleteSelectedMessage = vm.selectedFolder.hasSelectedMessage();
           vm.selectedFolder.$deleteMessages(selectedMessages).then(function(index) {
@@ -421,18 +428,22 @@
                                            l('The messages could not be moved to the trash folder. Would you like to delete them immediately?'),
                                            { ok: l('Delete') })
               .then(function() {
-                vm.selectedFolder.$deleteMessages(selectedMessages, { withoutTrash: true }).then(function(index) {
-                  if (Mailbox.$virtualMode) {
-                    // When performing an advanced search, we refresh the view if the selected message
-                    // was deleted, but only once all promises have completed.
-                    if (deleteSelectedMessage)
-                      $state.go('mail.account.virtualMailbox');
-                  }
-                  else {
-                    // In normal mode, we immediately unselect the selected message.
-                    _unselectMessage(deleteSelectedMessage, index);
-                  }
-                });
+                vm.selectedFolder.$deleteMessages(selectedMessages, { withoutTrash: true })
+                  .then(function(index) {
+                    if (Mailbox.$virtualMode) {
+                      // When performing an advanced search, we refresh the view if the selected message
+                      // was deleted, but only once all promises have completed.
+                      if (deleteSelectedMessage)
+                        $state.go('mail.account.virtualMailbox');
+                    }
+                    else {
+                      // In normal mode, we immediately unselect the selected message.
+                      _unselectMessage(deleteSelectedMessage, index);
+                    }
+                  })
+                  .finally(function() {
+                    vm.messageDialog = null;
+                  });
               });
           });
         })
@@ -475,7 +486,7 @@
         vm.selectedFolder.$copyMessages(selectedMessages, '/' + dstFolder).then(function() {
           $mdToast.show(
             $mdToast.simple()
-              .content(l('%{0} message(s) copied', vm.selectedFolder.$selectedCount()))
+              .textContent(l('%{0} message(s) copied', vm.selectedFolder.$selectedCount()))
               .position('top right')
               .hideDelay(2000));
         });
@@ -489,7 +500,7 @@
         vm.selectedFolder.$moveMessages(selectedMessages, '/' + dstFolder).then(function(index) {
           $mdToast.show(
             $mdToast.simple()
-              .content(l('%{0} message(s) moved', count))
+              .textContent(l('%{0} message(s) moved', count))
               .position('top right')
               .hideDelay(2000));
           if (Mailbox.$virtualMode) {

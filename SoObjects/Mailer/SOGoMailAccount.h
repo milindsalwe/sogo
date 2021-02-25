@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2009-2017 Inverse inc.
+  Copyright (C) 2009-2021 Inverse inc.
 
   This file is part of SOGo.
 
@@ -28,12 +28,13 @@
   SOGoMailAccount
     Parent object: SOGoMailAccounts
     Child objects: SOGoMailFolder
-  
+
   The SOGoMailAccount represents a single IMAP4 mail account (host, login,
   password, etc)
 */
 
 @class NSArray;
+@class NSException;
 @class NSMutableDictionary;
 @class NSMutableArray;
 @class NSString;
@@ -79,13 +80,19 @@ typedef enum {
 - (BOOL) supportsQResync;
 
 - (id) getInboxQuota;
-- (BOOL) updateFilters;
-- (BOOL) updateFiltersWithUsername: (NSString *) theUsername
-                       andPassword: (NSString *) thePassword;
+- (NSException *) updateFilters;
+- (NSException *) updateFiltersAndForceActivation: (BOOL) forceActivation;
+- (NSException *) updateFiltersWithUsername: (NSString *) theUsername
+                                andPassword: (NSString *) thePassword
+                            forceActivation: (BOOL) forceActivation;
 
 - (NSArray *) identities;
+- (NSDictionary *) defaultIdentity;
+- (BOOL) forceDefaultIdentity;
+- (NSDictionary *) identityForEmail: (NSString *) email;
 - (NSString *) signature;
 - (NSString *) encryption;
+- (NSString *) tlsVerifyMode;
 
 /* folder pathes */
 - (NSArray *) toManyRelationshipKeysWithNamespaces: (BOOL) withNSs;

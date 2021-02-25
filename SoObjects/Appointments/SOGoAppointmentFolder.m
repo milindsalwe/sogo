@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2007-2014 Inverse inc.
+  Copyright (C) 2007-2019 Inverse inc.
   Copyright (C) 2004-2005 SKYRIX Software AG
 
   This file is part of SOGo.
@@ -37,6 +37,7 @@
 #import <NGCards/iCalTimeZonePeriod.h>
 #import <NGCards/iCalToDo.h>
 #import <NGCards/NSString+NGCards.h>
+#import <NGExtensions/NSCalendarDate+misc.h>
 #import <NGExtensions/NGCalendarDateRange.h>
 #import <NGExtensions/NSNull+misc.h>
 #import <NGExtensions/NSObject+Logs.h>
@@ -59,6 +60,7 @@
 #import <SOGo/SOGoWebDAVValue.h>
 #import <SOGo/WORequest+SOGo.h>
 #import <SOGo/WOResponse+SOGo.h>
+#import <SOGo/SOGoSource.h>
 
 #import "iCalCalendar+SOGo.h"
 #import "iCalRepeatableEntityObject+SOGo.h"
@@ -69,7 +71,6 @@
 #import "SOGoFreeBusyObject.h"
 #import "SOGoTaskObject.h"
 #import "SOGoWebAppointmentFolder.h"
-
 
 #define defaultColor @"#AAAAAA"
 
@@ -425,11 +426,11 @@ static Class iCalEventK = nil;
                      response: (WOResponse *) theResponse
 {
   NSMutableDictionary *moduleSettings, *folderShowAlarms, *freeBusyExclusions;
-  NSString *subscriptionPointer;
+  NSString *subscriptionPointer, *domain;
   NSMutableArray *allUsers;
   SOGoUserSettings *us;
-  NSDictionary *dict;
   SOGoUser *sogoUser;
+  NSDictionary *dict;
   BOOL rc;
   int i;
 
@@ -437,29 +438,41 @@ static Class iCalEventK = nil;
 
   if (rc)
     {
-      dict = [[SOGoUserManager sharedUserManager] contactInfosForUserWithUIDorEmail: theIdentifier];
+#warning Duplicated code from SOGoGCSFolder subscribeUserOrGroup
+     domain = [[context activeUser] domain];
+     dict = [[SOGoUserManager sharedUserManager] contactInfosForUserWithUIDorEmail: theIdentifier
+                                                                          inDomain: domain];
 
-      if ([[dict objectForKey: @"isGroup"] boolValue])
-        {
-          SOGoGroup *aGroup;
+     if (dict && [[dict objectForKey: @"isGroup"] boolValue])
+       {
+         id <SOGoSource> source;
 
-          aGroup = [SOGoGroup groupWithIdentifier: theIdentifier
-                                         inDomain: [[context activeUser] domain]];
-          allUsers = [NSMutableArray arrayWithArray: [aGroup members]];
+         source = [[SOGoUserManager sharedUserManager] sourceWithID: [dict objectForKey: @"SOGoSource"]];
+         if ([source conformsToProtocol:@protocol(SOGoMembershipSource)])
+           {
+             NSArray *members;
 
-          // We remove the active user from the group (if present) in order to
-          // not subscribe him to their own resource!
-          [allUsers removeObject: [context activeUser]];
-        }
-      else
-        {
-          sogoUser = [SOGoUser userWithLogin: theIdentifier roles: nil];
+             members = [(id<SOGoMembershipSource>)(source) membersForGroupWithUID: [dict objectForKey: @"c_uid"]];
+             allUsers = [NSMutableArray arrayWithArray: members];
 
-          if (sogoUser)
-            allUsers = [NSArray arrayWithObject: sogoUser];
-          else
-            allUsers = [NSArray array];
-        }
+             // We remove the active user from the group (if present) in order to
+             // not subscribe him to their own resource!
+             [allUsers removeObject: [context activeUser]];
+           }
+         else
+           {
+             [self errorWithFormat: @"Inconsistency error - got group identifier (%@) from a source (%@) that does not support groups (%@).", theIdentifier, [dict objectForKey: @"SOGoSource"], NSStringFromClass([source class])];
+             return NO;
+           }
+       }
+     else
+       {
+         sogoUser = [SOGoUser userWithLogin: theIdentifier roles: nil];
+         if (sogoUser)
+           allUsers = [NSArray arrayWithObject: sogoUser];
+         else
+           allUsers = [NSArray array];
+       }
 
       for (i = 0; i < [allUsers count]; i++)
         {
@@ -1100,6 +1113,12 @@ firstInstanceCalendarDateRange: (NGCalendarDateRange *) fir
       endDate = [(iCalToDo*) component due];
     }
 
+  if (![master startDate])
+    {
+      [self errorWithFormat: @"ignored component with no DTSTART"];
+      return;
+    }
+
   delta = [masterEndDate timeIntervalSinceDate: [master startDate]];
   recurrenceIdRange = [NGCalendarDateRange calendarDateRangeWithStartDate: recurrenceId
 								  endDate: [recurrenceId dateByAddingYears:0 months:0 days:0 hours:0 minutes:0 seconds: delta]];
@@ -1461,8 +1480,7 @@ firstInstanceCalendarDateRange: (NGCalendarDateRange *) fir
 #warning we do not take the participation status into account
   while ((currentRecord = [ma nextObject]))
     {
-      accessClass
-        = [[currentRecord objectForKey: @"c_classification"] intValue];
+      accessClass = [[currentRecord objectForKey: @"c_classification"] intValue];
       role = roles[accessClass];
       if (!role)
         {
@@ -1491,13 +1509,17 @@ firstInstanceCalendarDateRange: (NGCalendarDateRange *) fir
   EOQualifier *qualifier;
   GCSFolder *folder;
   NSMutableArray *fields, *ma;
+  NSMutableDictionary *currentRecord;
   NSArray *records;
+  NSEnumerator *matchingRecords;
   NSMutableArray *baseWhere;
   NSString *where, *dateSqlString, *privacySQLString, *currentLogin;
   NSCalendarDate *endDate;
   NGCalendarDateRange *r;
   BOOL rememberRecords, canCycle;
+  SOGoUser *ownerUser;
 
+  ownerUser = [SOGoUser userWithLogin: self->owner roles: nil];
   rememberRecords = [self _checkIfWeCanRememberRecords: _fields];
   canCycle = [_component isEqualToString: @"vevent"] || [_component isEqualToString: @"vtodo"];
 //   if (rememberRecords)
@@ -1521,7 +1543,7 @@ firstInstanceCalendarDateRange: (NGCalendarDateRange *) fir
                                                _component]];
     }
   else if (![self showCalendarTasks])
-      [baseWhere addObject: @"c_component != 'vtodo'"];
+    [baseWhere addObject: @"c_component != 'vtodo'"];
 
   if (_startDate)
     {
@@ -1541,8 +1563,9 @@ firstInstanceCalendarDateRange: (NGCalendarDateRange *) fir
     }
 
   privacySQLString = [self aclSQLListingFilter];
-  
-  if (privacySQLString)
+
+  // Check for access to classification and also make sure the user is still active
+  if (privacySQLString && ownerUser)
     {
       if ([privacySQLString length])
         [baseWhere addObject: privacySQLString];
@@ -1588,8 +1611,7 @@ firstInstanceCalendarDateRange: (NGCalendarDateRange *) fir
 
       if (records)
         {
-          if (r)
-            records = [self _fixupRecords: records];
+          records = [self _fixupRecords: records];
           ma = [NSMutableArray arrayWithArray: records];
         }
       else
@@ -1626,7 +1648,7 @@ firstInstanceCalendarDateRange: (NGCalendarDateRange *) fir
           // replace the date range
           if (r)
             {
-              if ([baseWhere count] > 1)
+              if (dateSqlString)
                 [baseWhere removeLastObject];
               dateSqlString = [self _sqlStringRangeFrom: _startDate
                                                      to: endDate
@@ -1655,11 +1677,21 @@ firstInstanceCalendarDateRange: (NGCalendarDateRange *) fir
         }
 
       currentLogin = [[context activeUser] login];
-      if (![currentLogin isEqualToString: owner]
-          && !_includeProtectedInformation)
-        [self _fixupProtectedInformation: [ma objectEnumerator]
-                                inFields: _fields
-                                 forUser: currentLogin];
+      if (![currentLogin isEqualToString: self->owner])
+        {
+
+          if (!_includeProtectedInformation)
+            [self _fixupProtectedInformation: [ma objectEnumerator]
+                                    inFields: _fields
+                                     forUser: currentLogin];
+        }
+
+      // Add owner to each record. It will be used when generating freebusy.
+      matchingRecords = [ma objectEnumerator];
+      while ((currentRecord = [matchingRecords nextObject]))
+        {
+          [currentRecord setObject: ownerUser forKey: @"owner"];
+        }
 
       if (rememberRecords)
         [self _rememberRecords: ma];
@@ -3386,7 +3418,6 @@ firstInstanceCalendarDateRange: (NGCalendarDateRange *) fir
   NSMutableDictionary *timezones, *uids;
   NSString *tzId, *uid, *originalUid;
   iCalEntityObject *element;
-  iCalDateTime *startDate;
   iCalTimeZone *timezone;
   iCalCalendar *masterCalendar;
   iCalEvent *event;
@@ -3430,92 +3461,29 @@ firstInstanceCalendarDateRange: (NGCalendarDateRange *) fir
           
           timezone = nil;
           element = [components objectAtIndex: i];
-          // Use the timezone of the start date.
-          startDate = (iCalDateTime *) [element uniqueChildWithTag: @"dtstart"];
-          if (startDate)
-            {
-              tzId = [startDate value: 0 ofAttribute: @"tzid"];
-              if ([tzId length])
-                timezone = [timezones valueForKey: tzId];
-	      else
-		{
-		  // If the start date is a "floating time", let's use the user's timezone
-		  // during the import for both the start and end dates. This is similar
-		  // to what we do in SOGoAppointmentObject: -_adjustFloatingTimeInRequestCalendar:
-		  NSString *s;
-		  
-		  s = [[startDate valuesAtIndex: 0 forKey: @""] objectAtIndex: 0];
-		  
-		  if ([element isKindOfClass: iCalEventK] &&
-		      ![(iCalEvent *)element isAllDay] &&
-		      ![s hasSuffix: @"Z"] &&
-		      ![s hasSuffix: @"z"])
-		    {
-		      iCalDateTime *endDate;
-		      int delta;
-		      
-		      timezone = [iCalTimeZone timeZoneForName: [[[self->context activeUser] userDefaults] timeZoneName]];
-		      [calendar addTimeZone: timezone];
-	
-		      delta = [[timezone periodForDate: [startDate dateTime]] secondsOffsetFromGMT];
-		      event = (iCalEvent *)element;
-		  
-		      [event setStartDate: [[event startDate] dateByAddingYears: 0  months: 0  days: 0  hours: 0  minutes: 0  seconds: -delta]];
-		      [startDate setTimeZone: timezone];
 
-		      endDate = (iCalDateTime *) [element uniqueChildWithTag: @"dtend"];
-		      
-		      if (endDate)
-			{
-			  [event setEndDate: [[event endDate] dateByAddingYears: 0  months: 0  days: 0  hours: 0  minutes: 0  seconds: -delta]];
-			  [endDate setTimeZone: timezone];
-			}
-		    }
-		}
-	      
-              if ([element isKindOfClass: iCalEventK])
+          if ([element isKindOfClass: iCalEventK])
+            {
+              event = (iCalEvent *)element;
+              timezone = [event adjustInContext: self->context withTimezones: timezones];
+
+              if ([event recurrenceId])
                 {
-                  event = (iCalEvent *)element;
-                  if (![event hasEndDate] && ![event hasDuration])
+                  // Event is an occurrence of a repeating event
+                  if ((uid = [uids valueForKey: [event uid]]))
                     {
-                      // No end date, no duration
-                      if ([event isAllDay])
-                        [event setDuration: @"P1D"];
-                      else
-                        [event setDuration: @"PT1H"];
-                      
-                      [self errorWithFormat: @"Importing event with no end date; setting duration to %@ for UID = %@", [event duration], [event uid]];
-                    }
-		  //
-		  // We check for broken all-day events (like the ones coming from the "WebCalendar" tool) where
-		  // the start date is equal to the end date. This clearly violates the RFC:
-		  //
-		  // 3.8.2.2. Date-Time End
-		  // The value MUST be later in time than the value of the "DTSTART" property. 
-		  //
-		  if ([event isAllDay] && [[event startDate] isEqual: [event endDate]])
-		    {
-		      [event setEndDate: [[event startDate] dateByAddingYears: 0  months: 0  days: 1  hours: 0  minutes: 0  seconds: 0]];
-		      [self errorWithFormat: @"Fixed broken all-day event; setting end date to %@ for UID = %@", [event endDate], [event uid]];
-		    }
-                  if ([event recurrenceId])
-                    {
-                      // Event is an occurrence of a repeating event
-                      if ((uid = [uids valueForKey: [event uid]]))
+                      SOGoAppointmentObject *master = [self lookupName: uid
+                                                             inContext: context
+                                                               acquire: NO];
+                      if (master)
                         {
-                          SOGoAppointmentObject *master = [self lookupName: uid
-                                                                 inContext: context
-                                                                   acquire: NO];
-                          if (master)
-                            {
-                              // Associate the occurrence to the master event and skip the actual import process
-                              masterCalendar = [master calendar: NO secure: NO];
-                              [masterCalendar addToEvents: event];
-                              if (timezone)
-                                [masterCalendar addTimeZone: timezone];
-                              [master saveCalendar: masterCalendar];
-                              continue;
-                            }
+                          // Associate the occurrence to the master event and skip the actual import process
+                          masterCalendar = [master calendar: NO secure: NO];
+                          [masterCalendar addToEvents: event];
+                          if (timezone)
+                            [masterCalendar addTimeZone: timezone];
+                          [master saveCalendar: masterCalendar];
+                          continue;
                         }
                     }
                 }

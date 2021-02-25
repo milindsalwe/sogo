@@ -50,6 +50,10 @@
 #import <SOGo/SOGoUserManager.h>
 #import <SOGo/SOGoWebAuthenticator.h>
 
+#if defined(MFA_CONFIG)
+#include <liboath/oath.h>
+#endif
+
 #import "SOGoRootPage.h"
 
 @implementation SOGoRootPage
@@ -109,7 +113,7 @@
 
   appName = [[context request] applicationName];
   date = [NSCalendarDate calendarDate];
-  [date setTimeZone: [NSTimeZone timeZoneWithAbbreviation: @"GMT"]];
+  [date setTimeZone: [NSTimeZone timeZoneForSecondsFromGMT: 0]];
   if (username)
     {
       // Cookie expires in one month
@@ -129,7 +133,7 @@
     }
 
   [loginCookie setPath: [NSString stringWithFormat: @"/%@/", appName]];
-  
+
   return loginCookie;
 }
 
@@ -148,7 +152,7 @@
   if (cookieReset)
     {
       date = [NSCalendarDate calendarDate];
-      [date setTimeZone: [NSTimeZone timeZoneWithAbbreviation: @"GMT"]];
+      [date setTimeZone: [NSTimeZone timeZoneForSecondsFromGMT: 0]];
       [locationCookie setExpires: [date yesterday]];
     }
 
@@ -182,32 +186,33 @@
   SOGoUserDefaults *ud;
   SOGoUser *loggedInUser;
   NSDictionary *params;
-  NSString *username, *password, *language, *domain, *remoteHost;
+  NSString *username, *password, *language, *domain, *remoteHost, *verificationCode;
   NSArray *supportedLanguages, *creds;
-  
+
   SOGoPasswordPolicyError err;
   int expire, grace;
   BOOL rememberLogin, b;
-  
+
   err = PolicyNoError;
   expire = grace = -1;
-  
+
   auth = [[WOApplication application] authenticatorInContext: context];
   request = [context request];
   params = [[request contentAsString] objectFromJSONString];
 
   username = [params objectForKey: @"userName"];
   password = [params objectForKey: @"password"];
+  verificationCode = [params objectForKey: @"verificationCode"];
   language = [params objectForKey: @"language"];
   rememberLogin = [[params objectForKey: @"rememberLogin"] boolValue];
   domain = [params objectForKey: @"domain"];
   /* this will always be set to something more or less useful by
    * [WOHttpTransaction applyAdaptorHeadersWithHttpRequest] */
   remoteHost = [request headerForKey:@"x-webobjects-remote-host"];
-  
+
   if ((b = [auth checkLogin: username password: password domain: &domain
 		 perr: &err expire: &expire grace: &grace useCache: NO])
-      && (err == PolicyNoError)  
+      && (err == PolicyNoError)
       // no password policy
       && ((expire < 0 && grace < 0)     // no password policy or everything is alright
       || (expire < 0 && grace > 0)      // password expired, grace still permits login
@@ -216,18 +221,76 @@
       NSDictionary *json;
 
       [self logWithFormat: @"successful login from '%@' for user '%@' - expire = %d  grace = %d", remoteHost, username, expire, grace];
-      
+
       // We get the proper username for cookie creation. If we are using a multidomain
       // environment with SOGoEnableDomainBasedUID, we could have to append the domain
       // to the username. Also when SOGoEnableDomainBasedUID is enabled, we could be in
       // the DomainLessLogin situation, so we would NOT add the domain. -getUIDForEmail
       // has all the logic for this, so lets use it.
       if ([domain isNotNull])
-        {
-          username = [[SOGoUserManager sharedUserManager] getUIDForEmail: username];
-        }
+        username = [[SOGoUserManager sharedUserManager] getUIDForEmail: username];
 
       loggedInUser = [SOGoUser userWithLogin: username];
+
+#if defined(MFA_CONFIG)
+      if ([[loggedInUser userDefaults] googleAuthenticatorEnabled])
+        {
+          if ([verificationCode length] == 6 && [verificationCode unsignedIntValue] > 0)
+            {
+              unsigned int code;
+              const char *real_secret;
+              char *secret;
+
+              size_t secret_len;
+
+              const auto time_step = OATH_TOTP_DEFAULT_TIME_STEP_SIZE;
+              const auto digits = 6;
+
+              real_secret = [[loggedInUser googleAuthenticatorKey] UTF8String];
+
+              auto result = oath_init();
+              auto t = time(NULL);
+              auto left = time_step - (t % time_step);
+
+              char otp[digits + 1];
+
+              oath_base32_decode (real_secret,
+                                  strlen(real_secret),
+                                  &secret, &secret_len);
+
+              result = oath_totp_generate2(secret,
+                                           secret_len,
+                                           t,
+                                           time_step,
+                                           OATH_TOTP_DEFAULT_START_TIME,
+                                           digits,
+                                           0,
+                                           otp);
+
+              sscanf(otp, "%u", &code);
+
+              oath_done();
+              free(secret);
+
+              if (code != [verificationCode unsignedIntValue])
+                {
+                  [self logWithFormat: @"Invalid Google Authenticator key for '%@'", username];
+                  json = [NSDictionary dictionaryWithObject: [NSNumber numberWithInt: 1]
+                                                 forKey: @"GoogleAuthenticatorInvalidKey"];
+                  return [self responseWithStatus: 403
+                        andJSONRepresentation: json];
+                }
+            } //  if ([verificationCode length] == 6 && [verificationCode unsignedIntValue] > 0)
+          else
+            {
+              [self logWithFormat: @"Missing Google Authenticator key for '%@', asking it..", username];
+              json = [NSDictionary dictionaryWithObject: [NSNumber numberWithInt: 1]
+                                                 forKey: @"GoogleAuthenticatorMissingKey"];
+              return [self responseWithStatus: 202
+                        andJSONRepresentation: json];
+            }
+        }
+#endif
 
       json = [NSDictionary dictionaryWithObjectsAndKeys:
                              [loggedInUser cn], @"cn",
@@ -265,8 +328,8 @@
     }
   else
     {
-      [self logWithFormat:@"Login from '%@' for user '%@' might not have worked - password policy: %d  grace: %d  expire: %d  bound: %d",
-                          remoteHost, username, err, grace, expire, b];
+      [self logWithFormat: @"Login from '%@' for user '%@' might not have worked - password policy: %d  grace: %d  expire: %d  bound: %d",
+            remoteHost, username, err, grace, expire, b];
 
       response = [self _responseWithLDAPPolicyError: err];
     }
@@ -317,7 +380,9 @@
 {
   WOResponse *response;
   NSString *login, *logoutRequest, *newLocation, *oldLocation, *ticket;
+  SOGoAppointmentFolders *calendars;
   SOGoCASSession *casSession;
+  SOGoUser *loggedInUser;
   SOGoWebAuthenticator *auth;
   WOCookie *casCookie, *casLocationCookie;
   WORequest *rq;
@@ -381,6 +446,11 @@
           newLocation = [NSString stringWithFormat: @"%@%@",
                                   oldLocation, [login stringByEscapingURL]];
         }
+
+      loggedInUser = [SOGoUser userWithLogin: login];
+      calendars = [loggedInUser calendarsFolderInContext: context];
+      if ([calendars respondsToSelector: @selector (reloadWebCalendars:)])
+        [calendars reloadWebCalendars: NO];
     }
   else
     {
@@ -578,7 +648,7 @@
 
   request = [context request];
   message = [[request contentAsString] objectFromJSONString];
-  
+
   auth = [[WOApplication application]
 	   authenticatorInContext: context];
   value = [[context request]
@@ -592,6 +662,8 @@
                   password: &password];
 
   newPassword = [message objectForKey: @"newPassword"];
+  // overwrite the value from the session to compare the actual input
+  password = [message objectForKey: @"oldPassword"];
 
   um = [SOGoUserManager sharedUserManager];
 
@@ -603,7 +675,7 @@
                             perr: &error])
     {
       // We delete the previous session
-      [SOGoSession deleteValueForSessionKey: [creds objectAtIndex: 1]]; 
+      [SOGoSession deleteValueForSessionKey: [creds objectAtIndex: 1]];
 
       if ([domain isNotNull])
         {
@@ -612,7 +684,7 @@
               [username rangeOfString: @"@"].location == NSNotFound)
             username = [NSString stringWithFormat: @"%@@%@", username, domain];
         }
-      
+
       response = [self responseWith204];
       authCookie = [auth cookieWithUsername: username
                                 andPassword: newPassword
@@ -630,6 +702,15 @@
     response = [self _responseWithLDAPPolicyError: error];
 
   return response;
+}
+
+- (BOOL) isGoogleAuthenticatorEnabled
+{
+#if defined(MFA_CONFIG)
+  return YES;
+#else
+  return NO;
+#endif
 }
 
 @end /* SOGoRootPage */

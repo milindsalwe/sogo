@@ -1,6 +1,6 @@
 /* UIxMailPartHTMLViewer.m - this file is part of SOGo
  *
- * Copyright (C) 2007-2017 Inverse inc.
+ * Copyright (C) 2007-2019 Inverse inc.
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -82,6 +82,7 @@ _xmlCharsetForCharset (NSString *charset)
     { @"windows-1250", XML_CHAR_ENCODING_ERROR}, // unsupported, will trigger windows-1250 -> utf8 conversion
     { @"windows-1251", XML_CHAR_ENCODING_ERROR}, // unsupported, will trigger windows-1251 -> utf8 conversion
     { @"windows-1255", XML_CHAR_ENCODING_ERROR}, // unsupported, will trigger windows-1255 -> utf8 conversion
+    { @"windows-1256", XML_CHAR_ENCODING_ERROR}, // unsupported, will trigger windows-1255 -> utf8 conversion
     { @"windows-1257", XML_CHAR_ENCODING_ERROR}, // unsupported, will trigger windows-1257 -> utf8 conversion
     { @"gb2312", XML_CHAR_ENCODING_ERROR},       // unsupported, will trigger gb2312 -> utf8 conversion
     { @"gbk", XML_CHAR_ENCODING_ERROR},          // unsupported, will trigger gb2312 -> utf8 conversion
@@ -521,6 +522,8 @@ _xmlCharsetForCharset (NSString *charset)
                                    == NSNotFound
                                    && ![value hasPrefix: @"mailto:"]
                                    && ![value hasPrefix: @"#"]);
+                  if (!skipAttribute)
+                    [resultPart appendString: @" rel=\"noopener\""];
                 }
               // Avoid: <div style="background:url('http://www.sogo.nu/fileadmin/sogo/logos/sogo.bts.png' ); width: 200px; height: 200px;" title="ssss">
               else if ([name isEqualToString: @"style"])
@@ -538,6 +541,7 @@ _xmlCharsetForCharset (NSString *charset)
 		       [name isEqualToString: @"onmouseout"] ||
 		       [name isEqualToString: @"onmouseup"] ||
 		       [name isEqualToString: @"onmouseover"] ||
+                       [name isEqualToString: @"onpointerrawupdate"] ||
 
 		       // Keyboard Events
 		       [name isEqualToString: @"onkeydown"] ||
@@ -792,6 +796,7 @@ _xmlCharsetForCharset (NSString *charset)
 {
   NSObject <SaxXMLReader> *parser;
   NSData *preparsedContent;
+  NSMutableData *htmlContent;
   NSString *s;
 
   xmlCharEncoding enc;
@@ -806,6 +811,14 @@ _xmlCharsetForCharset (NSString *charset)
 
   handler = [_UIxHTMLMailContentHandler new];
   [handler setAttachmentIds: attachmentIds];
+
+  // Some broken email messages have some additionnal content outside the main HTML tags which are
+  // ignored by libxml.
+  // We surround the whole part with additional HTML tags to render all content.
+  htmlContent = [NSMutableData dataWithBytes: "<html>" length: 6];
+  [htmlContent appendData: preparsedContent];
+  [htmlContent appendBytes: "</html>" length: 7];
+  preparsedContent = (NSData *)htmlContent;
 
   // We check if we got an unsupported charset. If so
   // we convert everything to UTF-16{LE,BE} so it passes
@@ -844,6 +857,13 @@ _xmlCharsetForCharset (NSString *charset)
   if (enc == XML_CHAR_ENCODING_UTF8)
     {
       s = [[NSString alloc] initWithData: preparsedContent  encoding: NSUTF8StringEncoding];
+
+      // Again, In some rare cases (like #4513), we can get utterly broken email messages where
+      // HTML parts are wrongly encoded. We try to fall back to UTF-8 if that happens and
+      // if it still happens, we fall back to ISO-Latin-1.
+      if (!s)
+        s = [[NSString alloc] initWithData: preparsedContent  encoding: NSISOLatin1StringEncoding];
+
       preparsedContent = [[s safeString] dataUsingEncoding: NSUTF8StringEncoding];
       RELEASE(s);
     }

@@ -31,7 +31,7 @@
    * @desc The factory we'll use to register with Angular
    * @returns the Mailbox constructor
    */
-  Mailbox.$factory = ['$q', '$timeout', '$log', 'sgSettings', 'Resource', 'Message', 'Acl', 'Preferences', 'sgMailbox_PRELOAD', function($q, $timeout, $log, Settings, Resource, Message, Acl, Preferences, PRELOAD) {
+  Mailbox.$factory = ['$q', '$timeout', '$log', 'sgSettings', 'Resource', 'Message', 'Acl', 'Preferences', 'sgMailbox_PRELOAD', 'sgMailbox_BATCH_DELETE_LIMIT', function($q, $timeout, $log, Settings, Resource, Message, Acl, Preferences, PRELOAD, BATCH_DELETE_LIMIT) {
     angular.extend(Mailbox, {
       $q: $q,
       $timeout: $timeout,
@@ -45,7 +45,8 @@
       $refreshTimeout: null,
       $virtualMode: false,
       $virtualPath: false,
-      PRELOAD: PRELOAD
+      PRELOAD: PRELOAD,
+      BATCH_DELETE_LIMIT: BATCH_DELETE_LIMIT
     });
     // Initialize sort parameters from user's settings
     if (Preferences.settings.Mail.SortingState) {
@@ -71,6 +72,7 @@
       LOOKAHEAD: 50,
       SIZE: 100
     })
+    .constant('sgMailbox_BATCH_DELETE_LIMIT', 1000)
     .factory('Mailbox', Mailbox.$factory);
 
   /**
@@ -102,9 +104,12 @@
     var collection = [],
         // Local recursive function
         createMailboxes = function(level, mailbox) {
+          mailbox.isSentFolder = mailbox.isSentFolder || mailbox.type == 'sent';
           for (var i = 0; i < mailbox.children.length; i++) {
             mailbox.children[i].level = level;
             mailbox.children[i] = new Mailbox(account, mailbox.children[i]);
+            if (mailbox.isSentFolder)
+              mailbox.children[i].isSentFolder = true;
             createMailboxes(level+1, mailbox.children[i]);
           }
         };
@@ -165,6 +170,12 @@
     if (this.path) {
       this.id = this.$id();
       this.$acl = new Mailbox.$$Acl('Mail/' + this.id);
+      if (this.threaded) {
+        this.$collapsedThreads = [];
+        if (Mailbox.$Preferences.settings.Mail.threadsCollapsed && Mailbox.$Preferences.settings.Mail.threadsCollapsed['/' + this.id]) {
+          this.$collapsedThreads = Mailbox.$Preferences.settings.Mail.threadsCollapsed['/' + this.id];
+        }
+      }
     }
     this.$displayName = this.name;
     if (this.type) {
@@ -195,7 +206,7 @@
       }
       else {
         this.$isSpecial = false;
-        this.$icon = 'folder_open';
+        this.$icon = 'folder';
       }
     }
     this.$isNoInferiors = this.isNoInferiors();
@@ -222,7 +233,16 @@
    * @returns the number of messages in the mailbox
    */
   Mailbox.prototype.getLength = function() {
-    return this.$messages.length;
+    var _this = this, collapsedThread = false;
+    var visibleMessages = _.filter(this.$messages, function(msg, i) {
+      if (msg.first) {
+        collapsedThread = msg.collapsed;
+      } else if (msg.level < 0) {
+        collapsedThread = false;
+      }
+      return msg.first || collapsedThread === false;
+    });
+    return visibleMessages.length;
   };
 
   /**
@@ -232,10 +252,18 @@
    * @returns the message at the specified index
    */
   Mailbox.prototype.getItemAtIndex = function(index) {
-    var message;
+    var _this = this, collapsedThread = false, message;
+    var visibleMessages = _.filter(this.$messages, function(msg, i) {
+      if (msg.first) {
+        collapsedThread = msg.collapsed;
+      } else if (msg.level < 0) {
+        collapsedThread = false; // leaving the thread
+      }
+      return msg.first || collapsedThread === false;
+    });
 
-    if (index >= 0 && index < this.$messages.length) {
-      message = this.$messages[index];
+    if (index >= 0 && index < visibleMessages.length) {
+      message = visibleMessages[index];
       this.$lastVisibleIndex = Math.max(0, index - 3); // Magic number is NUM_EXTRA from virtual-repeater.js
 
       if (this.$loadMessage(message.uid))
@@ -350,7 +378,7 @@
 
     angular.extend(options, { sortingAttributes: Mailbox.$query });
     if (angular.isDefined(filters)) {
-      options.filters = _.reject(filters, function(filter) {
+      options.filters = _.reject(angular.copy(filters), function(filter) {
         return !filter.searchInput || filter.searchInput.length === 0;
       });
       // Decompose filters that match two fields
@@ -434,9 +462,11 @@
           }
         }
 
-        Mailbox.$log.debug('Loading UIDs ' + uids.join(' '));
-        futureHeadersData = Mailbox.$$resource.post(this.id, 'headers', {uids: uids});
-        this.$unwrapHeaders(futureHeadersData);
+        if (uids.length) {
+          Mailbox.$log.debug('Loading UIDs ' + uids.join(' '));
+          futureHeadersData = Mailbox.$$resource.post(this.id, 'headers', {uids: uids});
+          this.$unwrapHeaders(futureHeadersData);
+        }
       }
     }
     return loaded;
@@ -584,7 +614,7 @@
    * @returns true if folder is eligible
    */
   Mailbox.prototype.$canFolderAs = function() {
-    return this.type == 'folder' && this.level === 0;
+    return this.type == 'folder';
   };
 
   /**
@@ -744,25 +774,37 @@
   /**
    * @function $deleteMessages
    * @memberof Mailbox.prototype
-   * @desc Delete multiple messages from mailbox.
+   * @desc Delete multiple messages from mailbox by batch of 1000 messages (see constant sgMailbox_BATCH_DELETE_LIMIT).
    * @param {object} [options] - additional options (use {withoutTrash: true} to delete immediately)
    * @return a promise of the HTTP operation
    */
   Mailbox.prototype.$deleteMessages = function(messages, options) {
-    var _this = this, uids, data;
+    var _this = this, uids,
+        batchSize = Mailbox.BATCH_DELETE_LIMIT;
 
     uids = _.map(messages, 'uid');
-    data = { uids: uids };
-    if (options) angular.extend(data, options);
 
-    return Mailbox.$$resource.post(this.id, 'batchDelete', data)
-      .then(function(data) {
-        // Update inbox quota
-        if (data.quotas)
-          _this.$account.updateQuota(data.quotas);
-
-        return _this.$_deleteMessages(uids, messages);
+    // Recursive function to synchronously delete batch of messages
+    function _deleteMessages(start, end) {
+      var currentUids = uids.slice(start, end),
+          currentMessages = messages.slice(start, end),
+          data = { uids: currentUids };
+      if (options) angular.extend(data, options);
+      return Mailbox.$$resource.post(_this.id, 'batchDelete', data).then(function(data) {
+        if (end < uids.length) {
+          _this.$_deleteMessages(currentUids, currentMessages);
+          return _deleteMessages(end, Math.min(end + batchSize, uids.length));
+        }
+        else {
+          // Last API call; update inbox quota
+          if (data.quotas)
+            _this.$account.updateQuota(data.quotas);
+          return _this.$_deleteMessages(currentUids, currentMessages);
+        }
       });
+    }
+
+    return _deleteMessages(0, Math.min(batchSize, uids.length));
   };
 
   /**
@@ -926,7 +968,7 @@
 
           // First entry of 'uids' are keys when threaded view is enabled
           if (_this.threaded) {
-            uids = _this.uids[0];
+            uids = _this.uids[0]; // uid, level, first
             _this.uids.splice(0, 1);
           }
 
@@ -935,6 +977,19 @@
             var data, msgObject;
             if (_this.threaded) {
               data = _.zipObject(uids, msg);
+              if (data.first === 1) {
+                var count = 1;
+                while (_this.uids[i + count] &&
+                       _this.uids[i + count][1] >= 0 &&
+                       _this.uids[i + count][2] !== 1) {
+                  count++;
+                }
+                data.count = count;
+                data.collapsed = false;
+                if (_this.$collapsedThreads.indexOf(data.uid.toString()) >= 0) {
+                  data.collapsed = true;
+                }
+              }
             } else {
               data = {uid: msg.toString()};
             }
